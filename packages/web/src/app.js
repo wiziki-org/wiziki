@@ -8,6 +8,7 @@ import { creerIndexPages, estLienNonPage } from './liens.js';
 import { remplirEditeur, reconstruireMarkdown } from './editeur-blocs.js';
 import { configurerComptes, brancherComptes, installer, libelleRole, actionsComptes } from './comptes.js';
 import { configurerHistorique, actionsHistorique } from './historique.js';
+import { configurerSauvegarde, brancherSauvegarde, actionsSauvegarde } from './sauvegarde.js';
 
 let etatEditeurBlocs = null; // lien entre les blocs affichés dans l'éditeur visuel et leur Markdown d'origine
 
@@ -292,7 +293,9 @@ function nettoyerTitresArbre(elements) {
                 rouvrirPage: (id, titre) => ouvrirPage(id, titre, { historique: 'aucun' }),
                 rechargerStructure: chargerStructure,
             });
+            configurerSauvegarde({ apiEcrire });
             brancherComptes();
+            brancherSauvegarde();
             await lireSession();
 
             // Première ouverture d'une installation neuve : création du compte propriétaire
@@ -1129,6 +1132,7 @@ function convertirDokuWikiEnMarkdown() {
 export const actions = {
     ...actionsComptes,
     ...actionsHistorique,
+    ...actionsSauvegarde,
     allerConnexion,
     ajouterPage,
     annulerEdition,

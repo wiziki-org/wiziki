@@ -24,6 +24,7 @@
                     <a href="/" target="_blank" class="block text-center bg-gray-100 hover:bg-gray-200 text-gray-700 py-1.5 px-3 rounded text-xs font-semibold border border-gray-300">👁️ Vue Lecture</a>
                     <button data-action="ouvrirParametres" class="w-full text-center text-xs font-semibold text-gray-500 hover:text-indigo-600 border py-1 rounded bg-gray-50">⚙️ Paramètres</button>
                     <button data-action="ouvrirCorbeille" class="w-full text-center text-xs font-semibold text-gray-500 hover:text-indigo-600 border py-1 rounded bg-gray-50">🗑️ Corbeille</button>
+                    <button data-action="ouvrirSauvegarde" class="owner-only w-full text-center text-xs font-semibold text-gray-500 hover:text-indigo-600 border py-1 rounded bg-gray-50">💾 Export / import</button>
                     <button data-action="ouvrirMembres" class="owner-only w-full text-center text-xs font-semibold text-gray-500 hover:text-indigo-600 border py-1 rounded bg-gray-50">👥 Membres</button>
                 </div>
                 <hr class="my-3 border-gray-100">
@@ -301,6 +302,32 @@
             <p class="text-xs text-gray-500 mb-3">Une page restaurée revient dans « Fichiers non classés », avec tout son historique.</p>
             <ul id="liste-corbeille" class="border rounded-lg overflow-auto flex-1 min-h-0"></ul>
             <div class="flex justify-end mt-4"><button data-action="fermerCorbeille" class="bg-gray-100 px-4 py-2 rounded-lg text-sm">Fermer</button></div>
+        </div>
+    </div>
+    <!-- Export / import du wiki complet (propriétaires) -->
+    <div id="modal-sauvegarde" class="hidden fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center p-4 z-50">
+        <div class="bg-white rounded-xl p-6 max-w-lg w-full shadow-2xl max-h-[90vh] overflow-auto">
+            <h3 class="text-lg font-bold mb-1">💾 Export / import</h3>
+            <p class="text-xs text-gray-500 mb-4">Un fichier .zip au format ouvert : pages en Markdown, arbre, images et historique. Il sert de sauvegarde et permet d'emporter le wiki sur un autre serveur Wiziki. Les comptes et mots de passe n'y figurent pas.</p>
+
+            <section class="border rounded-lg p-4 mb-4">
+                <h4 class="font-semibold text-sm mb-2">⬇️ Exporter ce wiki</h4>
+                <label class="flex items-center gap-2 text-sm mb-3"><input type="checkbox" id="export-historique" checked> Inclure l'historique des versions</label>
+                <button data-action="telechargerExport" class="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-semibold">Télécharger l'export</button>
+            </section>
+
+            <section class="border border-red-200 rounded-lg p-4">
+                <h4 class="font-semibold text-sm mb-1">⬆️ Importer un export</h4>
+                <p class="text-xs text-red-700 mb-3">Tout le contenu actuel (pages, arbre, images, historique, corbeille) sera <strong>remplacé</strong>. Les membres et la visibilité du wiki sont conservés. Pensez à exporter d'abord.</p>
+                <form id="form-import" class="space-y-3">
+                    <input type="file" id="import-fichier" accept=".zip,application/zip" required class="block w-full text-sm">
+                    <label class="flex items-start gap-2 text-sm"><input type="checkbox" id="import-confirmer" required class="mt-1"> Je confirme vouloir remplacer tout le contenu de ce wiki.</label>
+                    <button type="submit" id="btn-importer" class="bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-semibold">Importer</button>
+                </form>
+                <div id="import-resultat" class="hidden mt-3 text-sm"></div>
+            </section>
+
+            <div class="flex justify-end mt-4"><button data-action="fermerSauvegarde" class="bg-gray-100 px-4 py-2 rounded-lg text-sm">Fermer</button></div>
         </div>
     </div>
 

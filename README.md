@@ -36,6 +36,8 @@ Connexion : `/?mode=admin` ou le lien « Se connecter » en bas du menu. Les pro
 
 ```bash
 npm run wiziki -- import-legacy <dossier>   # importer un wiki de la version 1 (pages/, media/, uploads/, structure.json)
+npm run wiziki -- export mon-wiki.zip        # export complet au format ouvert (pages, arbre, images, historique)
+npm run wiziki -- import mon-wiki.zip --force  # remplace le contenu du wiki par un export
 npm run wiziki -- backup sauvegarde.db      # copie cohérente de la base, serveur démarré ou non
 npm run wiziki -- info                      # wikis et contenu
 npm run wiziki -- utilisateurs              # comptes et rôles
@@ -44,6 +46,12 @@ npm run wiziki -- mot-de-passe marie        # mot de passe oublié : en définir
 ```
 
 Dans le conteneur Docker, la commande s'appelle directement `wiziki`.
+
+## Export / import
+
+Depuis l'interface (**💾 Export / import**, propriétaires) ou en ligne de commande : un fichier .zip lisible sans Wiziki
+(Markdown, JSON, images), pour sauvegarder un wiki ou le déplacer vers un autre serveur. Format décrit dans
+[docs/format-export.md](docs/format-export.md).
 
 ## Docker (standalone)
 

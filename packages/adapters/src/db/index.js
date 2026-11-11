@@ -8,12 +8,14 @@ import { Migrator } from 'kysely/migration';
 import * as m001 from './migrations/001_initial.js';
 import * as m002 from './migrations/002_redirections.js';
 import * as m003 from './migrations/003_comptes.js';
+import * as m004 from './migrations/004_auteur_importe.js';
 
 // Liste explicite (pas de lecture de dossier) : fonctionne aussi une fois empaqueté.
 const MIGRATIONS = {
     '001_initial': m001,
     '002_redirections': m002,
     '003_comptes': m003,
+    '004_auteur_importe': m004,
 };
 
 /** Ouvre (et crée si besoin) une base SQLite. `fichier` peut valoir ':memory:' pour les tests. */

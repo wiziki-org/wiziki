@@ -224,7 +224,8 @@ export function creerServiceWiki({ db, storage }) {
         const page = await lirePage(wikiId, slug);
         const lignes = await db.selectFrom('revisions')
             .leftJoin('users', 'users.id', 'revisions.author_id')
-            .select(['revisions.id', 'revisions.titre', 'revisions.author_id', 'revisions.created_at', 'users.nom as auteur',
+            .select(['revisions.id', 'revisions.titre', 'revisions.author_id', 'revisions.created_at',
+                eb => eb.fn.coalesce('users.nom', 'revisions.auteur_nom').as('auteur'),
                 eb => eb.fn('length', ['revisions.contenu']).as('taille')])
             .where('revisions.page_id', '=', page.id).orderBy('revisions.id', 'desc').execute();
         return lignes.map((l, i) => ({ ...l, taille: Number(l.taille), actuelle: i === 0 }));
@@ -233,7 +234,8 @@ export function creerServiceWiki({ db, storage }) {
     async function lireRevision(wikiId, revisionId) {
         const rev = await db.selectFrom('revisions')
             .leftJoin('users', 'users.id', 'revisions.author_id')
-            .select(['revisions.id', 'revisions.page_id', 'revisions.titre', 'revisions.contenu', 'revisions.created_at', 'users.nom as auteur'])
+            .select(['revisions.id', 'revisions.page_id', 'revisions.titre', 'revisions.contenu', 'revisions.created_at',
+                eb => eb.fn.coalesce('users.nom', 'revisions.auteur_nom').as('auteur')])
             .where('revisions.wiki_id', '=', wikiId).where('revisions.id', '=', revisionId)
             .executeTakeFirst();
         if (!rev) throw new ErreurWiki(404, 'Version introuvable.');

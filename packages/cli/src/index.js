@@ -3,7 +3,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
-import { creerServiceWiki, creerServiceComptes, ROLES, REGEX_SLUG, REGEX_CLE_FICHIER, TYPES_MIME } from '@wiziki/core';
+import { creerServiceWiki, creerServiceComptes, creerServiceArchive, arbreTolerant, ROLES, REGEX_SLUG, REGEX_CLE_FICHIER, TYPES_MIME } from '@wiziki/core';
+import { creerZip, lireZip } from '@wiziki/adapters/archive';
 import { ouvrirSqlite, migrer, sauvegarderSqlite } from '@wiziki/adapters/db';
 import { creerStockageDisque } from '@wiziki/adapters/storage';
 
@@ -13,6 +14,10 @@ Commandes :
   migrate                         Crée ou met à jour le schéma de la base de données
   import-legacy <dossier>         Importe un wiki de l'ancienne version (pages/, media/, uploads/, structure.json)
       --wiki <slug>               Wiki de destination (défaut : default)
+      --force                     Remplace le contenu du wiki s'il en a déjà
+  export <fichier.zip>            Exporte le wiki (pages, arbre, images, historique) au format ouvert Wiziki
+      --sans-historique           N'inclut que la dernière version de chaque page
+  import <fichier.zip>            Importe un export Wiziki dans le wiki (membres et visibilité conservés)
       --force                     Remplace le contenu du wiki s'il en a déjà
   backup <fichier.db>             Copie cohérente de la base, même serveur démarré
   info                            Liste les wikis et leur contenu
@@ -33,6 +38,7 @@ const { values: opts, positionals } = parseArgs({
         data: { type: 'string' },
         wiki: { type: 'string', default: 'default' },
         force: { type: 'boolean', default: false },
+        'sans-historique': { type: 'boolean', default: false },
         role: { type: 'string', default: 'editor' },
         email: { type: 'string' },
         nom: { type: 'string' },
@@ -49,12 +55,15 @@ const dossierFichiers = path.join(dossierDonnees, 'files');
 const storage = creerStockageDisque(dossierFichiers);
 const service = creerServiceWiki({ db, storage });
 const comptes = creerServiceComptes({ db });
+const archives = creerServiceArchive({ db, storage, wikis: service, logiciel: { nom: 'wiziki', version: lireVersion() } });
 
 try {
     await migrer(db);
     switch (commande) {
         case 'migrate': console.log('✅ Schéma à jour.'); break;
         case 'import-legacy': await importerAncienWiki(args[0]); break;
+        case 'export': await exporter(args[0]); break;
+        case 'import': await importer(args[0]); break;
         case 'backup': await sauvegarde(args[0]); break;
         case 'info': await info(); break;
         case 'utilisateur-ajouter': await ajouterUtilisateur(args[0]); break;
@@ -78,17 +87,6 @@ function listerFichiersRecursif(dossier, base = dossier) {
         if (e.isDirectory()) return listerFichiersRecursif(complet, base);
         return e.isFile() ? [path.relative(base, complet).split(path.sep).join('/')] : [];
     });
-}
-
-// Retire les doublons d'un arbre (on garde la première occurrence)
-function dedoublonnerArbre(elements, vus, avertir) {
-    return (elements || []).filter(el => {
-        if (!el || typeof el.id !== 'string') { avertir(`élément d'arbre sans identifiant ignoré`); return false; }
-        if (!REGEX_SLUG.test(el.id)) { avertir(`identifiant d'arbre invalide ignoré : ${el.id}`); return false; }
-        if (vus.has(el.id)) { avertir(`page en double dans l'arbre ignorée : ${el.id}`); return false; }
-        vus.add(el.id);
-        return true;
-    }).map(el => ({ ...el, enfants: dedoublonnerArbre(el.enfants, vus, avertir) }));
 }
 
 async function importerAncienWiki(source) {
@@ -137,7 +135,7 @@ async function importerAncienWiki(source) {
     let structure = { parametres: {}, arbre: [] };
     if (fs.existsSync(fichierStructure)) structure = JSON.parse(fs.readFileSync(fichierStructure, 'utf8'));
     else avertir('structure.json absent : toutes les pages seront « non classées »');
-    const arbre = dedoublonnerArbre(structure.arbre, new Set(), avertir);
+    const arbre = arbreTolerant(structure.arbre, avertir);
     await service.enregistrerStructure(wikiId, { parametres: structure.parametres, arbre });
 
     // 3. Images (media/ et uploads/)
@@ -160,6 +158,35 @@ async function importerAncienWiki(source) {
     if (avertissements.length) {
         console.log(`⚠️  ${avertissements.length} avertissement(s) :`);
         for (const a of avertissements) console.log(`   - ${a}`);
+    }
+}
+
+function lireVersion() {
+    return JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
+}
+
+async function exporter(destination) {
+    if (!destination) throw new Error('Indiquez le fichier à créer : wiziki export <fichier.zip>');
+    const wiki = await service.trouverWikiParSlug(opts.wiki);
+    if (!wiki) throw new Error(`Wiki « ${opts.wiki} » introuvable.`);
+    const fichiers = await archives.exporterWiki(wiki.id, { historique: !opts['sans-historique'] });
+    const zip = creerZip(fichiers);
+    const temporaire = `${path.resolve(destination)}.tmp`;
+    fs.writeFileSync(temporaire, zip);
+    fs.renameSync(temporaire, path.resolve(destination));
+    const manifeste = JSON.parse(fichiers.get('wiki.json'));
+    console.log(`✅ Wiki « ${wiki.slug} » exporté dans ${path.resolve(destination)} (${(zip.length / 1024 / 1024).toFixed(1)} Mo)`);
+    console.log(`   ${manifeste.pages.length} pages, ${manifeste.fichiers.length} images${opts['sans-historique'] ? ', sans historique' : ', avec historique'}`);
+}
+
+async function importer(source) {
+    if (!source) throw new Error('Indiquez le fichier à importer : wiziki import <fichier.zip>');
+    const wiki = await wikiCible();
+    const r = await archives.importerWiki(wiki.id, lireZip(fs.readFileSync(path.resolve(source))), { remplacer: opts.force });
+    console.log(`✅ Import terminé dans le wiki « ${wiki.slug} » : ${r.pages} pages (${r.dansArbre} dans l'arbre), ${r.versions} versions, ${r.images} images`);
+    if (r.avertissements.length) {
+        console.log(`⚠️  ${r.avertissements.length} avertissement(s) :`);
+        for (const a of r.avertissements) console.log(`   - ${a}`);
     }
 }
 

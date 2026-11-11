@@ -4,11 +4,14 @@ import fs from 'node:fs';
 import path from 'node:path';
 import Fastify from 'fastify';
 import cookie from '@fastify/cookie';
-import { creerServiceWiki, creerServiceComptes, roleSuffit, ErreurWiki, TAILLE_MAX_PAGE, TAILLE_MAX_IMAGE } from '@wiziki/core';
+import { creerServiceWiki, creerServiceComptes, creerServiceArchive, roleSuffit, ErreurWiki, TAILLE_MAX_PAGE, TAILLE_MAX_IMAGE } from '@wiziki/core';
+import { creerZip, lireZip } from '@wiziki/adapters/archive';
 import { INDEX_FILE, ASSETS_DIR, verifierBuild } from '@wiziki/web';
 import { creerLimiteur, COOKIE_SESSION } from './auth.js';
 
 const LIMITE_JSON = 1024 * 1024;
+const LIMITE_IMPORT = 512 * 1024 * 1024; // archive ZIP d'un wiki complet
+const VERSION = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
 
 const CSP = [
     "default-src 'self'",
@@ -35,6 +38,7 @@ export async function construireApp({ config, db, storage }) {
     verifierBuild();
     const service = creerServiceWiki({ db, storage });
     const comptes = creerServiceComptes({ db });
+    const archives = creerServiceArchive({ db, storage, wikis: service, logiciel: { nom: 'wiziki', version: VERSION } });
     const limiteurIp = creerLimiteur();
     const limiteurCompte = creerLimiteur({ max: 10 });
 
@@ -74,6 +78,7 @@ export async function construireApp({ config, db, storage }) {
     app.addContentTypeParser(['application/octet-stream', 'image/*'], { parseAs: 'buffer', bodyLimit: TAILLE_MAX_IMAGE }, (req, corps, done) => done(null, corps));
     app.removeContentTypeParser('text/plain');
     app.addContentTypeParser('text/plain', { parseAs: 'string', bodyLimit: TAILLE_MAX_PAGE }, (req, corps, done) => done(null, corps));
+    app.addContentTypeParser(['application/zip', 'application/x-zip-compressed'], { parseAs: 'buffer', bodyLimit: LIMITE_IMPORT }, (req, corps, done) => done(null, corps));
     // Par compatibilité, tout autre type est lu tel quel
     app.addContentTypeParser('*', { parseAs: 'buffer', bodyLimit: TAILLE_MAX_IMAGE }, (req, corps, done) => done(null, corps));
 
@@ -396,6 +401,28 @@ export async function construireApp({ config, db, storage }) {
     app.get('/api/images', async req => {
         await exigerRole(req, 'editor');
         return service.listerImagesEnvoyees(wikiId);
+    });
+
+    // ------------------------------------------------------------ Export / import (format ouvert, docs/format-export.md)
+
+    app.get('/api/export', async (req, reply) => {
+        await exigerRole(req, 'owner');
+        const historique = req.query.historique !== '0';
+        const zip = creerZip(await archives.exporterWiki(wikiId, { historique }));
+        const jour = new Date().toISOString().slice(0, 10);
+        const nom = `${config.slugWiki.replace(/[^A-Za-z0-9_-]/g, '_')}-${jour}.wiziki.zip`;
+        reply.header('Content-Type', 'application/zip')
+            .header('Content-Disposition', `attachment; filename="${nom}"`)
+            .header('Cache-Control', 'no-store');
+        return reply.send(zip);
+    });
+
+    app.post('/api/import', { bodyLimit: LIMITE_IMPORT }, async req => {
+        const { utilisateur } = await exigerRole(req, 'owner');
+        if (!Buffer.isBuffer(req.body) || !req.body.length) throw new ErreurWiki(400, 'Envoyez le fichier .zip de l\'export.');
+        const resultat = await archives.importerWiki(wikiId, lireZip(req.body), { remplacer: req.query.remplacer === '1', auteurId: utilisateur.id });
+        req.log.warn({ utilisateur: utilisateur.identifiant, pages: resultat.pages, images: resultat.images }, 'wiki importé depuis une archive');
+        return { ok: true, ...resultat };
     });
 
     // Accès au jeton d'installation pour les tests automatiques uniquement
