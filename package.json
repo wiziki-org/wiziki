@@ -1,0 +1,31 @@
+{
+  "name": "wiziki",
+  "private": true,
+  "version": "0.2.0",
+  "description": "Wiziki — moteur de wiki auto-hébergeable et plateforme d'hébergement",
+  "license": "AGPL-3.0-or-later",
+  "homepage": "https://wiziki.org",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wiziki-org/wiziki.git"
+  },
+  "bugs": {
+    "url": "https://github.com/wiziki-org/wiziki/issues",
+    "email": "contact@wiziki.org"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "start": "node packages/server/src/main.js",
+    "dev": "node --watch packages/server/src/main.js",
+    "dev:web": "npm run dev -w @wiziki/web",
+    "build": "npm run build -w @wiziki/web",
+    "test": "npm run build && NODE_ENV=test node --test \"packages/*/test/*.test.js\"",
+    "wiziki": "node packages/cli/src/index.js"
+  }
+}

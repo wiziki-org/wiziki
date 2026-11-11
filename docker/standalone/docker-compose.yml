@@ -1,0 +1,16 @@
+# Wiziki standalone. Usage : copier ce fichier, créer un .env avec ADMIN_PASSWORD=..., puis `docker compose up -d`
+services:
+  wiziki:
+    build:
+      context: ../..
+      dockerfile: docker/standalone/Dockerfile
+    container_name: wiziki
+    restart: always
+    ports:
+      - "127.0.0.1:3100:3000" # derrière un reverse proxy (Caddy, Nginx…)
+    environment:
+      # Facultatif : crée le compte « admin » au premier démarrage. Sinon, écran d'installation (jeton dans `docker logs wiziki`)
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
+      - TRUST_PROXY=1
+    volumes:
+      - ./data:/data

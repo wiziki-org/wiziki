@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<!-- v.22 -->
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mon Wiki Pro</title>
+    <script type="module" src="/src/main.js"></script>
+</head>
+<body class="bg-gray-50 text-gray-800 flex flex-col min-h-screen">
+
+    <div id="banniere-site" class="hidden w-full h-48 bg-cover bg-center relative border-b border-gray-200">
+        <div class="absolute inset-0 bg-black bg-opacity-10"></div>
+    </div>
+
+    <div class="flex flex-col md:flex-row flex-1">
+        <aside class="w-full md:w-auto md:min-w-[16rem] md:max-w-[26rem] md:shrink-0 bg-white border-b md:border-r border-gray-200 p-4 flex flex-col justify-between shadow-sm">
+            <div>
+                <div class="flex justify-between items-center mb-4">
+                    <h1 id="nom-du-wiki" class="text-xl font-bold text-indigo-600">📚 MiniWiki</h1>
+                    <button data-action="ajouterPage" class="admin-only bg-indigo-600 text-white px-2 py-1 rounded text-sm hover:bg-indigo-700">+</button>
+                </div>
+                <div class="admin-only mb-4 space-y-2">
+                    <a href="/" target="_blank" class="block text-center bg-gray-100 hover:bg-gray-200 text-gray-700 py-1.5 px-3 rounded text-xs font-semibold border border-gray-300">👁️ Vue Lecture</a>
+                    <button data-action="ouvrirParametres" class="w-full text-center text-xs font-semibold text-gray-500 hover:text-indigo-600 border py-1 rounded bg-gray-50">⚙️ Paramètres</button>
+                    <button data-action="ouvrirCorbeille" class="w-full text-center text-xs font-semibold text-gray-500 hover:text-indigo-600 border py-1 rounded bg-gray-50">🗑️ Corbeille</button>
+                    <button data-action="ouvrirMembres" class="owner-only w-full text-center text-xs font-semibold text-gray-500 hover:text-indigo-600 border py-1 rounded bg-gray-50">👥 Membres</button>
+                </div>
+                <hr class="my-3 border-gray-100">
+
+                <div id="menu-arbre" class="space-y-1 overflow-x-auto"></div>
+
+                <div id="bloc-orphelins" class="hidden mt-6 pt-4 border-t border-gray-200">
+                    <h3 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">📁 Fichiers non classés</h3>
+                    <div id="liste-orphelins" class="space-y-1 max-h-48 overflow-auto pr-1"></div>
+                </div>
+            </div>
+            <div class="space-y-2 mt-4">
+                <button data-action="sauvegarderConfigurationGlobal" class="admin-only bg-green-600 text-white py-2 rounded text-sm font-semibold hover:bg-green-700 w-full">💾 Sauvegarder l'ordre</button>
+                <div id="status-mode" class="text-xs text-center text-gray-400 font-medium bg-gray-100 py-1 rounded">Mode Lecture</div>
+                <button id="lien-connexion" data-action="allerConnexion" class="block w-full text-center text-xs text-gray-400 hover:text-indigo-600 py-1">🔐 Se connecter</button>
+                <div class="admin-only flex justify-center gap-3">
+                    <button data-action="ouvrirMonCompte" class="text-center text-xs text-gray-400 hover:text-indigo-600 py-1">🔑 Mon compte</button>
+                    <button data-action="seDeconnecter" class="text-center text-xs text-gray-400 hover:text-red-600 py-1">Se déconnecter</button>
+                </div>
+            </div>
+        </aside>
+
+        <main class="flex-1 p-4 md:p-10 max-w-4xl mx-auto w-full">
+            <div id="zone-lecture" class="hidden bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+                <div class="flex justify-between items-center border-b border-gray-100 pb-4 mb-4">
+                    <h2 id="titre-page-lecture" data-action="renommerPageActuelleSiAdmin" class="text-3xl font-extrabold text-gray-900"></h2>
+                    <div class="flex gap-2 shrink-0">
+                        <button data-action="renommerPageActuelle" class="admin-only bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded-lg text-sm font-medium" title="Renommer la page">✎ Renommer</button>
+                        <button data-action="ouvrirHistorique" class="admin-only bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded-lg text-sm font-medium" title="Versions précédentes de la page">🕘 Historique</button>
+                        <button data-action="passerEnEdition" class="admin-only bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded-lg text-sm font-medium">✏️ Modifier la page</button>
+                    </div>
+                </div>
+                <div id="contenu-html" class="prose max-w-none text-gray-700 leading-relaxed"></div>
+            </div>
+
+            <div id="zone-edition" class="hidden bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+                <h2 id="titre-page-edition" class="text-xl font-bold text-gray-800 mb-3">Édition</h2>
+
+                <div class="sticky top-0 z-10 rounded-t-lg shadow-sm">
+                    <div class="bg-gray-50 p-2 border border-b-0 border-gray-300 rounded-t-lg flex flex-wrap gap-1 items-center">
+                        <button data-action="insererStyle" data-args='["**", "**"]' class="px-2 py-1 bg-white border text-sm font-bold rounded">G</button>
+                        <button data-action="insererStyle" data-args='["*", "*"]' class="px-2 py-1 bg-white border text-sm italic rounded">I</button>
+                        <button data-action="insererStyle" data-args='["# ", ""]' class="px-2 py-1 bg-white border text-xs font-semibold rounded">H1</button>
+                        <button data-action="insererStyle" data-args='["## ", ""]' class="px-2 py-1 bg-white border text-xs font-semibold rounded">H2</button>
+                        <div class="h-4 w-[1px] bg-gray-300 mx-1"></div>
+                        <button data-action="ouvrirModuleTableau" class="px-2 py-1 bg-indigo-50 border border-indigo-100 text-xs font-bold rounded text-indigo-700">📊 Tableau</button>
+                        <div class="h-4 w-[1px] bg-gray-300 mx-1"></div>
+                        <button id="btn-ajouter-image" data-action="ouvrirBoiteImage" class="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded shadow-sm">🖼️ Ajouter Image</button>
+                        <div class="h-4 w-[1px] bg-gray-300 mx-1"></div>
+                        <button id="btn-ajouter-lien" data-action="ouvrirBoiteLien" class="px-3 py-1 bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold rounded shadow-sm">🔗 Lien</button>
+                        <div class="h-4 w-[1px] bg-gray-300 mx-1"></div>
+                        <button data-action="convertirDokuWikiEnMarkdown" class="px-2 py-1 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded shadow-sm" title="Convertir la syntaxe ====== Titre ====== en Markdown">
+                            🔄 Convertir DokuWiki
+                        </button>
+                    </div>
+                    <div class="flex border-l border-r border-gray-300 bg-white">
+                        <button id="tab-mode-visuel" data-action="basculerModeEdition" data-args='["visuel"]' class="px-4 py-2 text-sm font-medium text-indigo-600 bg-indigo-50 border-b-2 border-indigo-500">👁️ Visuel</button>
+                        <button id="tab-mode-markdown" data-action="basculerModeEdition" data-args='["markdown"]' class="px-4 py-2 text-sm font-medium text-gray-500 hover:text-gray-700 border-b-2 border-transparent">📝 Markdown</button>
+                    </div>
+                </div>
+                <div id="editeur-visuel" contenteditable="true" data-placeholder="Commencez à écrire..." class="w-full p-4 border border-gray-300 rounded-b-lg shadow-inner prose max-w-none text-gray-700 leading-relaxed focus:outline-none focus:ring-2 focus:ring-indigo-500" style="min-height:24rem;"></div>
+                <textarea id="editeur-texte" class="hidden w-full h-96 p-4 border border-gray-300 rounded-b-lg shadow-inner font-mono text-sm focus:ring-2 focus:ring-indigo-500" placeholder="Écrivez ici..."></textarea>
+
+                <div class="mt-4 flex justify-end gap-2">
+                    <button data-action="annulerEdition" class="bg-gray-100 text-gray-700 px-4 py-2 rounded-lg font-medium">Annuler</button>
+                    <button data-action="sauvegarderContenu" class="bg-indigo-600 text-white px-5 py-2 rounded-lg font-medium shadow">Enregistrer</button>
+                </div>
+            </div>
+
+            <div id="zone-vide" class="text-center py-20 text-gray-400"><p class="text-lg">Sélectionnez une page pour débuter.</p></div>
+        </main>
+    </div>
+
+    <div id="modal-image" class="hidden fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center p-4 z-50">
+        <div class="bg-white rounded-xl p-6 max-w-lg w-full shadow-2xl flex flex-col max-h-[85vh]">
+            <h3 class="text-lg font-bold text-gray-900 mb-3">Options de l'image</h3>
+            <div class="flex border-b border-gray-200 text-sm mb-4">
+                <button data-action="changerOngletImage" data-args='["tab-upload"]' id="btn-tab-upload" class="tab-btn pb-2 px-4 border-b-2 border-transparent text-gray-500 active">PC / Coller</button>
+                <button data-action="changerOngletImage" data-args='["tab-url"]' id="btn-tab-url" class="tab-btn pb-2 px-4 border-b-2 border-transparent text-gray-500">Lien Web (URL)</button>
+                <button data-action="changerOngletImage" data-args='["tab-serveur"]' id="btn-tab-serveur" class="tab-btn pb-2 px-4 border-b-2 border-transparent text-gray-500">Galerie Serveur</button>
+            </div>
+            <div class="flex-1 overflow-auto min-h-[150px]">
+                <div id="tab-upload" class="onglet-contenu space-y-3">
+                    <input type="file" id="input-file-image" accept="image/*" class="w-full text-sm">
+                </div>
+                <div id="tab-url" class="onglet-contenu hidden space-y-2">
+                    <input type="text" id="input-url-image" placeholder="https://..." class="w-full p-2 border rounded-lg text-sm">
+                </div>
+                <div id="tab-serveur" class="onglet-contenu hidden">
+                    <div id="galerie-serveur" class="grid grid-cols-3 gap-2"></div>
+                </div>
+            </div>
+            <div class="border-t pt-4 mt-4 bg-gray-50 p-3 rounded-lg">
+                <input type="number" id="input-taille-image" placeholder="Largeur (ex: 400)" class="w-32 p-2 border rounded-lg text-sm bg-white">
+            </div>
+            <div class="flex justify-end gap-2 mt-4">
+                <button data-action="fermerBoiteImage" class="bg-gray-100 px-4 py-2 rounded-lg text-sm">Annuler</button>
+                <button id="btn-valider-image" data-action="validerEtInsererImage" class="bg-emerald-600 text-white px-5 py-2 rounded-lg text-sm font-semibold">Insérer</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="modal-tableau" class="hidden fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center p-4 z-50">
+        <div class="bg-white rounded-xl p-6 w-full max-w-[92vw] shadow-2xl flex flex-col max-h-[90vh]">
+            <h3 class="text-lg font-bold mb-2">Éditeur de Tableau</h3>
+            <div class="flex gap-2 mb-3 text-xs">
+                <button data-action="modifierGrille" data-args='["add-row"]' class="bg-gray-100 border px-2 py-1 rounded">+ Ligne</button>
+                <button data-action="modifierGrille" data-args='["add-col"]' class="bg-gray-100 border px-2 py-1 rounded">+ Colonne</button>
+            </div>
+            <div class="overflow-auto border border-gray-200 rounded-lg flex-1 min-h-0 min-w-0 mb-4 p-2 bg-gray-50">
+                <table id="grille-excel" class="w-full bg-white border-collapse"></table>
+            </div>
+            <div class="flex justify-end gap-2">
+                <button data-action="fermerModuleTableau" class="bg-gray-100 px-4 py-2 rounded-lg text-sm">Annuler</button>
+                <button data-action="injecterTableauDansEditeur" class="bg-indigo-600 text-white px-5 py-2 rounded-lg text-sm font-semibold">Valider</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="modal-lien" class="hidden fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center p-4 z-50">
+        <div class="bg-white rounded-xl p-6 max-w-md w-full shadow-2xl">
+            <h3 id="titre-modal-lien" class="text-lg font-bold text-gray-900 mb-4">Insérer un lien</h3>
+            <div class="space-y-3">
+                <div>
+                    <label class="block text-xs font-semibold text-gray-600 mb-1">Texte affiché</label>
+                    <input type="text" id="input-texte-lien" placeholder="Mon lien" class="w-full p-2 border rounded-lg text-sm" data-entree="validerEtInsererLien">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-600 mb-1">URL</label>
+                    <input type="text" id="input-url-lien" placeholder="https://..." class="w-full p-2 border rounded-lg text-sm" data-entree="validerEtInsererLien">
+                </div>
+            </div>
+            <div class="flex justify-end gap-2 mt-5">
+                <button data-action="fermerBoiteLien" class="bg-gray-100 px-4 py-2 rounded-lg text-sm">Annuler</button>
+                <button id="btn-valider-lien" data-action="validerEtInsererLien" class="bg-sky-600 text-white px-5 py-2 rounded-lg text-sm font-semibold">Insérer</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="modal-connexion" class="hidden fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center p-4 z-50">
+        <form id="form-connexion" class="bg-white rounded-xl p-6 max-w-sm w-full shadow-2xl">
+            <h3 class="text-lg font-bold text-gray-900 mb-1">🔐 Connexion</h3>
+            <p id="connexion-info" class="text-xs text-gray-500 mb-4">Connectez-vous pour modifier le wiki.</p>
+            <input type="text" id="input-identifiant" autocomplete="username" autocapitalize="none" class="w-full p-2 border rounded-lg text-sm mb-2" placeholder="Identifiant ou email">
+            <input type="password" id="input-mot-de-passe" autocomplete="current-password" class="w-full p-2 border rounded-lg text-sm" placeholder="Mot de passe">
+            <p id="connexion-erreur" class="hidden text-xs text-red-600 mt-2"></p>
+            <div class="flex justify-end gap-2 mt-5">
+                <button type="button" data-action="fermerConnexion" class="bg-gray-100 px-4 py-2 rounded-lg text-sm">Annuler</button>
+                <button type="submit" class="bg-indigo-600 text-white px-5 py-2 rounded-lg text-sm font-semibold">Se connecter</button>
+            </div>
+        </form>
+    </div>
+
+    <div id="modal-parametres" class="hidden fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center p-4 z-50">
+        <div class="bg-white rounded-xl p-6 max-w-md w-full shadow-2xl">
+            <h3 class="text-lg font-bold mb-4">⚙️ Paramètres</h3>
+            <div class="space-y-4">
+                <input type="text" id="param-nom" class="w-full p-2 border rounded-lg text-sm" placeholder="Nom du wiki">
+                <label class="flex items-center gap-2"><input type="checkbox" id="param-banniere-active" data-on-change="toggleChampBanniere"> Activer la bannière</label>
+                <div id="bloc-url-banniere" class="hidden"><input type="text" id="param-banniere-url" class="w-full p-2 border rounded-lg text-sm" placeholder="URL de la bannière"></div>
+                <div>
+                    <label class="block text-sm text-gray-700 mb-1">Page d'accueil</label>
+                    <select id="param-page-accueil" class="w-full p-2 border rounded-lg text-sm"></select>
+                </div>
+                <div class="owner-only">
+                    <label class="block text-sm text-gray-700 mb-1">Visibilité</label>
+                    <select id="param-visibilite" class="w-full p-2 border rounded-lg text-sm">
+                        <option value="public">Public : tout le monde peut lire</option>
+                        <option value="prive">Privé : réservé aux membres</option>
+                    </select>
+                </div>
+                <div class="flex items-center justify-between">
+                    <label class="text-sm text-gray-700">Couleur des liens</label>
+                    <div class="flex items-center gap-2">
+                        <input type="color" id="param-couleur-liens" value="#4f46e5" class="w-8 h-8 rounded border cursor-pointer" data-on-input="previsualiserCouleurLiens">
+                        <button data-action="reinitialiserCouleurLiens" class="text-xs text-gray-400 hover:text-gray-600">Reset</button>
+                    </div>
+                </div>
+            </div>
+            <div class="flex justify-end gap-2 mt-6">
+                <button data-action="fermerParametres" class="bg-gray-100 px-4 py-2 rounded-lg text-sm">Fermer</button>
+                <button data-action="appliquerParametres" class="bg-indigo-600 text-white px-5 py-2 rounded-lg text-sm font-semibold">Appliquer</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Installation : création du compte propriétaire (jeton affiché dans les journaux du serveur) -->
+    <div id="modal-installation" class="hidden fixed inset-0 bg-gray-900 bg-opacity-60 flex items-center justify-center p-4 z-50">
+        <form id="form-installation" class="bg-white rounded-xl p-6 max-w-md w-full shadow-2xl space-y-3">
+            <h3 class="text-lg font-bold text-gray-900">👋 Installation du wiki</h3>
+            <p class="text-xs text-gray-500">Créez le compte propriétaire. Le jeton d'installation est affiché dans les journaux du serveur
+                (<code>docker logs</code> ou la console où le serveur a été lancé).</p>
+            <input id="inst-jeton" autocomplete="off" class="w-full p-2 border rounded-lg text-sm font-mono" placeholder="Jeton d'installation" required>
+            <input id="inst-identifiant" autocomplete="username" autocapitalize="none" class="w-full p-2 border rounded-lg text-sm" placeholder="Identifiant (ex. marie)" required>
+            <input id="inst-nom" autocomplete="name" class="w-full p-2 border rounded-lg text-sm" placeholder="Nom affiché (facultatif)">
+            <input id="inst-email" type="email" autocomplete="email" class="w-full p-2 border rounded-lg text-sm" placeholder="Email (facultatif)">
+            <input id="inst-mdp" type="password" autocomplete="new-password" class="w-full p-2 border rounded-lg text-sm" placeholder="Mot de passe (10 caractères minimum)" required>
+            <input id="inst-mdp2" type="password" autocomplete="new-password" class="w-full p-2 border rounded-lg text-sm" placeholder="Confirmer le mot de passe" required>
+            <p id="inst-erreur" class="hidden text-xs text-red-600"></p>
+            <div class="flex justify-end"><button type="submit" class="bg-indigo-600 text-white px-5 py-2 rounded-lg text-sm font-semibold">Créer le compte</button></div>
+        </form>
+    </div>
+
+    <!-- Membres du wiki (propriétaires) -->
+    <div id="modal-membres" class="hidden fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center p-4 z-50">
+        <div class="bg-white rounded-xl p-6 max-w-2xl w-full shadow-2xl flex flex-col max-h-[90vh]">
+            <h3 class="text-lg font-bold mb-3">👥 Membres du wiki</h3>
+            <div class="overflow-auto flex-1 min-h-0 border rounded-lg">
+                <table class="w-full text-sm">
+                    <thead class="bg-gray-50 text-xs text-gray-500 text-left"><tr><th class="p-2">Compte</th><th class="p-2">Rôle</th><th class="p-2">Dernière connexion</th><th class="p-2"></th></tr></thead>
+                    <tbody id="liste-membres"></tbody>
+                </table>
+            </div>
+            <p class="text-xs text-gray-500 mt-2"><b>Propriétaire</b> : tout, y compris les membres · <b>Éditeur</b> : pages, arbre, images · <b>Lecteur</b> : lecture d'un wiki privé</p>
+            <form id="form-membre" class="mt-4 pt-4 border-t grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <h4 class="sm:col-span-2 text-sm font-semibold text-gray-700">Ajouter un membre</h4>
+                <input id="membre-identifiant" autocomplete="off" autocapitalize="none" class="p-2 border rounded-lg text-sm" placeholder="Identifiant (ou compte existant)" required>
+                <select id="membre-role" class="p-2 border rounded-lg text-sm">
+                    <option value="editor">Éditeur</option><option value="reader">Lecteur</option><option value="owner">Propriétaire</option>
+                </select>
+                <input id="membre-nom" class="p-2 border rounded-lg text-sm" placeholder="Nom affiché (nouveau compte)">
+                <input id="membre-email" type="email" class="p-2 border rounded-lg text-sm" placeholder="Email (nouveau compte)">
+                <input id="membre-mdp" type="password" autocomplete="new-password" class="sm:col-span-2 p-2 border rounded-lg text-sm" placeholder="Mot de passe initial (nouveau compte, 10 caractères minimum)">
+                <p id="membre-erreur" class="hidden sm:col-span-2 text-xs text-red-600"></p>
+                <div class="sm:col-span-2 flex justify-end gap-2">
+                    <button type="button" data-action="fermerMembres" class="bg-gray-100 px-4 py-2 rounded-lg text-sm">Fermer</button>
+                    <button type="submit" class="bg-indigo-600 text-white px-5 py-2 rounded-lg text-sm font-semibold">Ajouter</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Mon compte : changement de mot de passe -->
+    <div id="modal-compte" class="hidden fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center p-4 z-50">
+        <form id="form-compte" class="bg-white rounded-xl p-6 max-w-sm w-full shadow-2xl space-y-3">
+            <h3 class="text-lg font-bold text-gray-900">🔑 Mon compte</h3>
+            <p id="compte-info" class="text-xs text-gray-500"></p>
+            <input type="text" id="compte-identifiant" autocomplete="username" hidden>
+            <input id="compte-actuel" type="password" autocomplete="current-password" class="w-full p-2 border rounded-lg text-sm" placeholder="Mot de passe actuel" required>
+            <input id="compte-nouveau" type="password" autocomplete="new-password" class="w-full p-2 border rounded-lg text-sm" placeholder="Nouveau mot de passe (10 caractères minimum)" required>
+            <input id="compte-nouveau2" type="password" autocomplete="new-password" class="w-full p-2 border rounded-lg text-sm" placeholder="Confirmer le nouveau mot de passe" required>
+            <p id="compte-message" class="hidden text-xs"></p>
+            <div class="flex justify-end gap-2">
+                <button type="button" data-action="fermerMonCompte" class="bg-gray-100 px-4 py-2 rounded-lg text-sm">Fermer</button>
+                <button type="submit" class="bg-indigo-600 text-white px-5 py-2 rounded-lg text-sm font-semibold">Changer le mot de passe</button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Historique d'une page -->
+    <div id="modal-historique" class="hidden fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center p-4 z-50">
+        <div class="bg-white rounded-xl p-6 w-full max-w-5xl shadow-2xl flex flex-col max-h-[90vh]">
+            <h3 id="historique-titre" class="text-lg font-bold mb-3">🕘 Historique</h3>
+            <div class="flex flex-col md:flex-row gap-4 flex-1 min-h-0">
+                <ul id="historique-liste" class="md:w-64 shrink-0 border rounded-lg overflow-auto max-h-48 md:max-h-none"></ul>
+                <div class="flex-1 min-w-0 flex flex-col border rounded-lg min-h-0">
+                    <div class="flex border-b text-sm">
+                        <button data-action="changerAffichageHistorique" data-args='["diff"]' data-onglet-historique="diff" class="px-4 py-2 border-b-2 border-transparent">Différences</button>
+                        <button data-action="changerAffichageHistorique" data-args='["apercu"]' data-onglet-historique="apercu" class="px-4 py-2 border-b-2 border-transparent">Aperçu</button>
+                    </div>
+                    <div id="historique-contenu" class="flex-1 overflow-auto min-h-[12rem]"></div>
+                </div>
+            </div>
+            <div class="flex justify-end gap-2 mt-4">
+                <button data-action="fermerHistorique" class="bg-gray-100 px-4 py-2 rounded-lg text-sm">Fermer</button>
+                <button id="btn-restaurer-version" data-action="restaurerVersion" class="bg-indigo-600 text-white px-5 py-2 rounded-lg text-sm font-semibold">Restaurer cette version</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Corbeille : pages supprimées -->
+    <div id="modal-corbeille" class="hidden fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center p-4 z-50">
+        <div class="bg-white rounded-xl p-6 max-w-lg w-full shadow-2xl flex flex-col max-h-[85vh]">
+            <h3 class="text-lg font-bold mb-1">🗑️ Corbeille</h3>
+            <p class="text-xs text-gray-500 mb-3">Une page restaurée revient dans « Fichiers non classés », avec tout son historique.</p>
+            <ul id="liste-corbeille" class="border rounded-lg overflow-auto flex-1 min-h-0"></ul>
+            <div class="flex justify-end mt-4"><button data-action="fermerCorbeille" class="bg-gray-100 px-4 py-2 rounded-lg text-sm">Fermer</button></div>
+        </div>
+    </div>
+
+</body>
+</html>

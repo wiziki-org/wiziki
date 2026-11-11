@@ -1,0 +1,12 @@
+node_modules
+**/node_modules
+data
+pages
+uploads
+media
+structure.json
+.git
+.env
+*.tmp
+packages/web/dist
+plateforme

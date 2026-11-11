@@ -1,0 +1,12 @@
+node_modules/
+data/
+.env
+*.tmp
+# Données de l'ancienne version (sources pour l'import, non versionnées)
+/pages/
+/uploads/
+/media/
+/structure.json
+.claude/settings.local.json
+# Dépôt privé séparé (wiziki-org/plateforme) : plan, stratégie, ancienne version, futurs modules payants
+/plateforme/
