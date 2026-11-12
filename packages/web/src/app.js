@@ -146,8 +146,13 @@ function selectionnerTexteInDOM(container, texte) {
         // Mode Kratos : connexion par le serveur d'identification ; le formulaire local reste accessible en secours
         async function demanderConnexion(message) {
             if (sessionCourante.auth === 'kratos') {
-                const r = await connexionKratos({ message, secours: true });
-                if (r === 'connecte') { await lireSession(true); return sessionCourante.connecte; }
+                const r = await connexionKratos({ message, secours: true, secondeEtape: !!sessionCourante.secondeEtape });
+                if (r === 'connecte') {
+                    await lireSession(true);
+                    // Double authentification activée : après le mot de passe, Kratos demande le code
+                    if (sessionCourante.secondeEtape && await connexionKratos({ secondeEtape: true }) === 'connecte') await lireSession(true);
+                    return sessionCourante.connecte;
+                }
                 if (r !== 'secours') return false;
             }
             return demanderConnexionLocale(message);

@@ -125,11 +125,13 @@ function fermer(resultat) {
 
 /**
  * Ouvre la fenêtre de connexion Kratos.
- * @param {{ message?: string, secours?: () => void }} options `secours` : passer au compte local de secours
+ * @param {{ message?: string, secours?: boolean, secondeEtape?: boolean }} options `secours` : lien vers le compte local de secours
  * @returns {Promise<'connecte'|'annule'|'secours'>}
  */
-export function connexionKratos({ message, secours } = {}) {
-    return ouvrir('connexion', new URLSearchParams(), { message, secours });
+export function connexionKratos({ message, secours, secondeEtape = false } = {}) {
+    // Seconde étape : la session existe (mot de passe), Kratos demande le code de l'application d'authentification
+    const params = new URLSearchParams(secondeEtape ? { aal: 'aal2' } : {});
+    return ouvrir('connexion', params, { message, secours: secondeEtape ? null : secours });
 }
 
 /** Vérification de l'adresse email (un code est envoyé par Kratos) */
