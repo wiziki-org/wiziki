@@ -10,3 +10,6 @@ structure.json
 *.tmp
 packages/web/dist
 plateforme
+docker/*/data
+docker/*/kratos-data
+docker/*/.env

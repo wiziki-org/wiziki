@@ -7,6 +7,7 @@ import {
 import { creerIndexPages, estLienNonPage } from './liens.js';
 import { remplirEditeur, reconstruireMarkdown } from './editeur-blocs.js';
 import { configurerComptes, brancherComptes, installer, libelleRole, actionsComptes } from './comptes.js';
+import { connexionKratos, deconnexionKratos, verifierAdresseKratos } from './kratos.js';
 import { configurerHistorique, actionsHistorique } from './historique.js';
 import { configurerSauvegarde, brancherSauvegarde, actionsSauvegarde } from './sauvegarde.js';
 
@@ -121,8 +122,8 @@ function selectionnerTexteInDOM(container, texte) {
         let sessionCourante = { connecte: false, utilisateur: null, role: null, installationRequise: false, visibilite: 'public' };
         const RANG_ROLE = { reader: 1, editor: 2, owner: 3 };
         const peut = minimum => (RANG_ROLE[sessionCourante.role] || 0) >= RANG_ROLE[minimum];
-        async function lireSession() {
-            sessionCourante = await fetch('/api/session').then(r => r.json()).catch(() => sessionCourante);
+        async function lireSession(rafraichir = false) {
+            sessionCourante = await fetch(rafraichir ? '/api/session?rafraichir=1' : '/api/session').then(r => r.json()).catch(() => sessionCourante);
             return sessionCourante;
         }
 
@@ -142,7 +143,16 @@ function selectionnerTexteInDOM(container, texte) {
         }
 
         let resoudreConnexion = null;
-        function demanderConnexion(message) {
+        // Mode Kratos : connexion par le serveur d'identification ; le formulaire local reste accessible en secours
+        async function demanderConnexion(message) {
+            if (sessionCourante.auth === 'kratos') {
+                const r = await connexionKratos({ message, secours: true });
+                if (r === 'connecte') { await lireSession(true); return sessionCourante.connecte; }
+                if (r !== 'secours') return false;
+            }
+            return demanderConnexionLocale(message);
+        }
+        function demanderConnexionLocale(message) {
             document.getElementById('connexion-info').textContent = message || 'Connectez-vous pour modifier le wiki.';
             document.getElementById('connexion-erreur').classList.add('hidden');
             document.getElementById('input-mot-de-passe').value = '';
@@ -179,6 +189,7 @@ function selectionnerTexteInDOM(container, texte) {
             erreur.classList.remove('hidden');
         });
         async function seDeconnecter() {
+            if (sessionCourante.auth === 'kratos') await deconnexionKratos();
             await fetch('/api/logout', { method: 'POST' });
             window.location.href = window.location.pathname; // même page, en lecture
         }
@@ -300,6 +311,13 @@ function nettoyerTitresArbre(elements) {
 
             // Première ouverture d'une installation neuve : création du compte propriétaire
             if (sessionCourante.installationRequise) {
+                // Mode Kratos : on se connecte d'abord avec son compte, le jeton le rend ensuite propriétaire
+                if (sessionCourante.auth === 'kratos') {
+                    while (!sessionCourante.connecte) {
+                        await connexionKratos({ message: "Installation : connectez-vous (ou créez votre compte), puis saisissez le jeton d'installation." });
+                        await lireSession(true);
+                    }
+                }
                 await installer();
                 await lireSession();
                 if (!modeAdminDemande) { window.location.href = window.location.pathname + '?mode=admin'; return; }
@@ -307,6 +325,12 @@ function nettoyerTitresArbre(elements) {
 
             if (modeAdminDemande && !isAdmin) {
                 if (!sessionCourante.connecte) await demanderConnexion();
+                // Mode Kratos : une invitation n'est reliée au compte qu'une fois l'adresse email vérifiée
+                if (!peut('editor') && sessionCourante.connecte && sessionCourante.utilisateur?.externe && !sessionCourante.role
+                    && confirm("Votre compte n'a pas encore de droits sur ce wiki.\n\nSi vous avez été invité avec votre adresse email, il faut d'abord la vérifier. Recevoir un code de vérification maintenant ?")) {
+                    await verifierAdresseKratos();
+                    await lireSession(true);
+                }
                 if (peut('editor')) activerModeAdmin();
                 else if (sessionCourante.connecte) alert("Votre compte n'a pas les droits de modification sur ce wiki : vous êtes en lecture seule.");
             }

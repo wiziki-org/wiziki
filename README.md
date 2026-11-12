@@ -25,12 +25,17 @@ Les données sont dans `./data` (ou `$WIZIKI_DATA_DIR`) : `wiziki.db` (SQLite) e
 | `PORT` / `HOST` | Écoute HTTP | `3000` / `0.0.0.0` |
 | `TRUST_PROXY` | `1` derrière un reverse proxy (Caddy, Nginx) | — |
 | `WIZIKI_LOG_LEVEL` | `info`, `warn`, `error`, `silent` | `info` |
+| `WIZIKI_AUTH` | `local` (comptes intégrés) ou `kratos` (connexion par un serveur Ory Kratos, voir [docs/kratos.md](docs/kratos.md)) | `local` |
+| `WIZIKI_KRATOS_URL` | Avec `WIZIKI_AUTH=kratos` : API publique de Kratos vue depuis le serveur (ex. `http://kratos:4433`) | — |
 
 ## Comptes et rôles
 
 Chaque wiki a des membres avec un rôle : **owner** (tout, y compris la gestion des membres et la visibilité),
 **editor** (pages, arbre, images) ou **reader** (lecture d'un wiki privé). Un wiki **public** se lit sans compte.
 Connexion : `/?mode=admin` ou le lien « Se connecter » en bas du menu. Les propriétaires gèrent les membres depuis « 👥 Membres ».
+
+Les comptes sont gérés par Wiziki lui-même. Ils peuvent aussi être confiés à un serveur **Ory Kratos** existant, qui apporte l'inscription libre, le mot de passe oublié par email
+et la double authentification. Les rôles restent gérés par Wiziki. Voir [docs/kratos.md](docs/kratos.md) et l'exemple [docker/kratos/](docker/kratos/).
 
 ## Commandes (CLI)
 

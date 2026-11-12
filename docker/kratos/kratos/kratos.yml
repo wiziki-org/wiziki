@@ -1,0 +1,63 @@
+# Configuration de Kratos pour un wiki Wiziki. Remplacez https://wiki.exemple.org par l'adresse de votre wiki.
+# Les secrets, la base de données et le serveur d'emails sont donnés par variables d'environnement (voir docker-compose.yml).
+version: v1.3.0
+
+serve:
+  public:
+    # Adresse interne : le navigateur passe toujours par le relais /kratos/ du wiki
+    base_url: http://kratos:4433/
+    host: 0.0.0.0
+    port: 4433
+  admin:
+    base_url: http://kratos:4434/
+    host: 127.0.0.1   # API d'administration : jamais exposée
+    port: 4434
+
+identity:
+  default_schema_id: default
+  schemas:
+    - id: default
+      url: file:///etc/config/kratos/identity.schema.json
+
+session:
+  lifespan: 720h
+
+selfservice:
+  default_browser_return_url: https://wiki.exemple.org/
+  allowed_return_urls:
+    - https://wiki.exemple.org/
+  methods:
+    password:
+      enabled: true
+  flows:
+    # L'interface du wiki affiche elle-même tous les parcours : ces adresses ne servent qu'en repli
+    error:        { ui_url: https://wiki.exemple.org/ }
+    login:        { ui_url: https://wiki.exemple.org/ }
+    settings:     { ui_url: https://wiki.exemple.org/, privileged_session_max_age: 15m }
+    logout:       { after: { default_browser_return_url: https://wiki.exemple.org/ } }
+    recovery:     { enabled: true, use: code, ui_url: https://wiki.exemple.org/ }
+    # Indispensable : Wiziki ne relie une invitation qu'à une adresse email vérifiée
+    verification: { enabled: true, use: code, ui_url: https://wiki.exemple.org/ }
+    registration:
+      ui_url: https://wiki.exemple.org/
+      after:
+        password:
+          hooks:
+            - hook: session
+
+hashers:
+  algorithm: argon2
+  argon2:
+    parallelism: 1
+    memory: 64MB
+    iterations: 2
+    salt_length: 16
+    key_length: 32
+
+courier:
+  smtp:
+    from_name: Wiki
+
+log:
+  level: warning
+  format: json

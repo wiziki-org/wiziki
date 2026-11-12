@@ -215,17 +215,23 @@
     <div id="modal-installation" class="hidden fixed inset-0 bg-gray-900 bg-opacity-60 flex items-center justify-center p-4 z-50">
         <form id="form-installation" class="bg-white rounded-xl p-6 max-w-md w-full shadow-2xl space-y-3">
             <h3 class="text-lg font-bold text-gray-900">👋 Installation du wiki</h3>
-            <p class="text-xs text-gray-500">Créez le compte propriétaire. Le jeton d'installation est affiché dans les journaux du serveur
+            <p class="text-xs text-gray-500"><span class="auth-local">Créez le compte propriétaire. </span>Le jeton d'installation est affiché dans les journaux du serveur
                 (<code>docker logs</code> ou la console où le serveur a été lancé).</p>
+            <p id="inst-kratos" class="hidden text-xs text-indigo-700"></p>
             <input id="inst-jeton" autocomplete="off" class="w-full p-2 border rounded-lg text-sm font-mono" placeholder="Jeton d'installation" required>
-            <input id="inst-identifiant" autocomplete="username" autocapitalize="none" class="w-full p-2 border rounded-lg text-sm" placeholder="Identifiant (ex. marie)" required>
-            <input id="inst-nom" autocomplete="name" class="w-full p-2 border rounded-lg text-sm" placeholder="Nom affiché (facultatif)">
-            <input id="inst-email" type="email" autocomplete="email" class="w-full p-2 border rounded-lg text-sm" placeholder="Email (facultatif)">
-            <input id="inst-mdp" type="password" autocomplete="new-password" class="w-full p-2 border rounded-lg text-sm" placeholder="Mot de passe (10 caractères minimum)" required>
-            <input id="inst-mdp2" type="password" autocomplete="new-password" class="w-full p-2 border rounded-lg text-sm" placeholder="Confirmer le mot de passe" required>
+            <input id="inst-identifiant" autocomplete="username" autocapitalize="none" class="auth-local w-full p-2 border rounded-lg text-sm" placeholder="Identifiant (ex. marie)" required data-requis>
+            <input id="inst-nom" autocomplete="name" class="auth-local w-full p-2 border rounded-lg text-sm" placeholder="Nom affiché (facultatif)">
+            <input id="inst-email" type="email" autocomplete="email" class="auth-local w-full p-2 border rounded-lg text-sm" placeholder="Email (facultatif)">
+            <input id="inst-mdp" type="password" autocomplete="new-password" class="auth-local w-full p-2 border rounded-lg text-sm" placeholder="Mot de passe (10 caractères minimum)" required data-requis>
+            <input id="inst-mdp2" type="password" autocomplete="new-password" class="auth-local w-full p-2 border rounded-lg text-sm" placeholder="Confirmer le mot de passe" required data-requis>
             <p id="inst-erreur" class="hidden text-xs text-red-600"></p>
             <div class="flex justify-end"><button type="submit" class="bg-indigo-600 text-white px-5 py-2 rounded-lg text-sm font-semibold">Créer le compte</button></div>
         </form>
+    </div>
+
+    <!-- Connexion par Ory Kratos (WIZIKI_AUTH=kratos) : contenu construit par src/kratos.js -->
+    <div id="modal-kratos" class="hidden fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center p-4 z-50">
+        <div id="kratos-carte" class="bg-white rounded-xl p-6 max-w-sm w-full shadow-2xl max-h-[90vh] overflow-auto"></div>
     </div>
 
     <!-- Membres du wiki (propriétaires) -->
@@ -248,6 +254,8 @@
                 <input id="membre-nom" class="p-2 border rounded-lg text-sm" placeholder="Nom affiché (nouveau compte)">
                 <input id="membre-email" type="email" class="p-2 border rounded-lg text-sm" placeholder="Email (nouveau compte)">
                 <input id="membre-mdp" type="password" autocomplete="new-password" class="sm:col-span-2 p-2 border rounded-lg text-sm" placeholder="Mot de passe initial (nouveau compte, 10 caractères minimum)">
+                <p id="membre-aide-kratos" class="hidden sm:col-span-2 text-xs text-gray-500">Le membre se connecte avec son propre compte :
+                    il reçoit ses droits dès sa première connexion avec cette adresse email, une fois l'adresse vérifiée.</p>
                 <p id="membre-erreur" class="hidden sm:col-span-2 text-xs text-red-600"></p>
                 <div class="sm:col-span-2 flex justify-end gap-2">
                     <button type="button" data-action="fermerMembres" class="bg-gray-100 px-4 py-2 rounded-lg text-sm">Fermer</button>

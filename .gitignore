@@ -10,3 +10,4 @@ data/
 .claude/settings.local.json
 # Dépôt privé séparé (wiziki-org/plateforme) : plan, stratégie, ancienne version, futurs modules payants
 /plateforme/
+kratos-data/

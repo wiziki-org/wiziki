@@ -6,6 +6,7 @@ import Fastify from 'fastify';
 import cookie from '@fastify/cookie';
 import { creerServiceWiki, creerServiceComptes, creerServiceArchive, roleSuffit, ErreurWiki, TAILLE_MAX_PAGE, TAILLE_MAX_IMAGE } from '@wiziki/core';
 import { creerZip, lireZip } from '@wiziki/adapters/archive';
+import { creerClientKratos, KratosIndisponible, SecondeEtapeRequise } from '@wiziki/adapters/kratos';
 import { INDEX_FILE, ASSETS_DIR, verifierBuild } from '@wiziki/web';
 import { creerLimiteur, COOKIE_SESSION } from './auth.js';
 
@@ -41,6 +42,15 @@ export async function construireApp({ config, db, storage }) {
     const archives = creerServiceArchive({ db, storage, wikis: service, logiciel: { nom: 'wiziki', version: VERSION } });
     const limiteurIp = creerLimiteur();
     const limiteurCompte = creerLimiteur({ max: 10 });
+    // WIZIKI_AUTH=kratos : connexion déléguée à Ory Kratos (les comptes locaux restent utilisables en secours)
+    const kratos = config.kratos ? creerClientKratos({ url: config.kratos.url, cookie: config.kratos.cookie }) : null;
+    // Cookies transmis à Kratos tels que reçus (sans décodage), filtrés par nom
+    const cookiesBruts = (req, garder) => String(req.headers.cookie || '').split(';')
+        .map(c => c.trim()).filter(c => { const i = c.indexOf('='); return i > 0 && garder(c.slice(0, i)); });
+    const sessionKratos = req => {
+        const c = cookiesBruts(req, n => n === kratos.nomCookie)[0];
+        return c ? c.slice(c.indexOf('=') + 1) : null;
+    };
 
     // Mode standalone : un seul wiki, créé au premier démarrage
     let wiki = await service.trouverWikiParSlug(config.slugWiki);
@@ -58,9 +68,12 @@ export async function construireApp({ config, db, storage }) {
             messagesDemarrage.push("Compte « admin » créé à partir de ADMIN_PASSWORD (propriétaire du wiki). ADMIN_PASSWORD n'est plus utilisé ensuite.");
         } else {
             jetonInstallation = crypto.randomBytes(18).toString('base64url');
-            messagesDemarrage.push(`Installation : ouvrez le wiki et créez le compte propriétaire avec ce jeton : ${jetonInstallation}`);
+            messagesDemarrage.push(kratos
+                ? `Installation : ouvrez le wiki, connectez-vous avec votre compte Kratos, puis saisissez ce jeton pour devenir propriétaire : ${jetonInstallation}`
+                : `Installation : ouvrez le wiki et créez le compte propriétaire avec ce jeton : ${jetonInstallation}`);
         }
     }
+    if (kratos) messagesDemarrage.push(`Identification par Ory Kratos : ${config.kratos.url}`);
     const purge = setInterval(() => comptes.purgerSessionsExpirees().catch(() => {}), 6 * 3600 * 1000);
     purge.unref();
 
@@ -103,9 +116,21 @@ export async function construireApp({ config, db, storage }) {
     /** Utilisateur connecté et son rôle sur le wiki (calculé une fois par requête) */
     async function contexte(req) {
         if (!req.contexteWiki) {
-            const utilisateur = await comptes.utilisateurDeSession(req.cookies[COOKIE_SESSION]);
+            // Session locale d'abord (comptes intégrés, ou compte de secours en mode Kratos)
+            let utilisateur = await comptes.utilisateurDeSession(req.cookies[COOKIE_SESSION]);
+            let kratosIndisponible = false, secondeEtape = false;
+            if (!utilisateur && kratos && sessionKratos(req)) {
+                try {
+                    const identite = await kratos.identifier(sessionKratos(req));
+                    if (identite) utilisateur = await comptes.utilisateurKratos(identite, { adressesNonVerifiees: config.kratos.adressesNonVerifiees });
+                } catch (err) {
+                    if (err instanceof SecondeEtapeRequise) secondeEtape = true;
+                    else if (err instanceof KratosIndisponible) { kratosIndisponible = true; req.log.error(err.message); }
+                    else throw err;
+                }
+            }
             const role = utilisateur ? await comptes.role(wikiId, utilisateur.id) : null;
-            req.contexteWiki = { utilisateur, role };
+            req.contexteWiki = { utilisateur, role, kratosIndisponible, secondeEtape };
         }
         return req.contexteWiki;
     }
@@ -122,6 +147,7 @@ export async function construireApp({ config, db, storage }) {
     /** Exige une session et un rôle minimal (reader < editor < owner) ; pour une écriture, vérifie aussi l'origine */
     async function exigerRole(req, minimum) {
         const ctx = await contexte(req);
+        if (!ctx.utilisateur && ctx.kratosIndisponible) throw new ErreurWiki(503, 'Le service de connexion est momentanément indisponible.');
         if (!ctx.utilisateur) throw new ErreurWiki(401, 'Connexion requise.');
         if (!roleSuffit(ctx.role, minimum)) throw new ErreurWiki(403, "Vous n'avez pas les droits nécessaires sur ce wiki.");
         if (req.method !== 'GET' && req.method !== 'HEAD') verifierOrigine(req);
@@ -213,9 +239,14 @@ export async function construireApp({ config, db, storage }) {
 
     app.get('/api/session', async (req, reply) => {
         reply.header('Cache-Control', 'no-store');
-        const { utilisateur, role } = await contexte(req);
+        // Juste après une connexion ou une vérification d'adresse : relire l'identité auprès de Kratos, sans le cache
+        if (kratos && req.query.rafraichir) kratos.oublier(sessionKratos(req));
+        const { utilisateur, role, kratosIndisponible, secondeEtape } = await contexte(req);
         const w = await service.trouverWikiParId(wikiId);
-        return { connecte: !!utilisateur, utilisateur, role, installationRequise: !!jetonInstallation, visibilite: w.visibilite };
+        return {
+            connecte: !!utilisateur, utilisateur, role, installationRequise: !!jetonInstallation, visibilite: w.visibilite,
+            auth: config.auth, ...(kratos ? { kratosIndisponible, secondeEtape } : {}),
+        };
     });
 
     app.post('/api/login', async (req, reply) => {
@@ -240,6 +271,7 @@ export async function construireApp({ config, db, storage }) {
     app.post('/api/logout', async (req, reply) => {
         verifierOrigine(req);
         await comptes.fermerSession(req.cookies[COOKIE_SESSION]);
+        if (kratos) kratos.oublier(sessionKratos(req)); // la session Kratos est fermée par le navigateur via /kratos/
         cookieSession(req, reply, '', 0);
         return { ok: true };
     });
@@ -250,16 +282,21 @@ export async function construireApp({ config, db, storage }) {
         if (!jetonInstallation) throw new ErreurWiki(409, 'Ce wiki est déjà installé.');
         if (limiteurIp.bloque(req.ip)) throw new ErreurWiki(429, 'Trop de tentatives. Réessayez dans 15 minutes.');
         const { jeton, identifiant, email, nom, motDePasse } = corpsJson(req);
+        // Mode Kratos : la personne s'est d'abord connectée avec son compte Kratos, le jeton la rend propriétaire
+        const ctx = kratos ? await contexte(req) : null;
+        if (kratos && !ctx.utilisateur) throw new ErreurWiki(401, "Connectez-vous d'abord avec votre compte, puis saisissez le jeton.");
         const a = Buffer.from(String(jeton || '')), b = Buffer.from(jetonInstallation);
         if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
             limiteurIp.echec(req.ip);
             throw new ErreurWiki(403, "Jeton d'installation incorrect (il est affiché dans les journaux du serveur).");
         }
-        const utilisateur = await comptes.creerUtilisateur({ identifiant, email, nom, motDePasse });
+        const utilisateur = kratos ? ctx.utilisateur : await comptes.creerUtilisateur({ identifiant, email, nom, motDePasse });
         await comptes.definirRole(wikiId, utilisateur.id, 'owner');
         jetonInstallation = null;
-        const session = await comptes.ouvrirSession(utilisateur.id, { ip: req.ip, userAgent: req.headers['user-agent'] });
-        cookieSession(req, reply, session.jeton, session.dureeSecondes);
+        if (!kratos) {
+            const session = await comptes.ouvrirSession(utilisateur.id, { ip: req.ip, userAgent: req.headers['user-agent'] });
+            cookieSession(req, reply, session.jeton, session.dureeSecondes);
+        }
         req.log.warn({ identifiant: utilisateur.identifiant }, 'installation terminée : compte propriétaire créé');
         return { ok: true, utilisateur, role: 'owner' };
     });
@@ -275,6 +312,42 @@ export async function construireApp({ config, db, storage }) {
         return { ok: true };
     });
 
+    // ------------------------------------------------------------ Relais vers Kratos (WIZIKI_AUTH=kratos)
+
+    // Les parcours de connexion passent par le wiki, pour que le cookie de session Kratos soit posé sur le domaine
+    // du wiki sans toucher à la configuration de Kratos. Seuls les parcours « self-service » sont exposés.
+    if (kratos) {
+        const cookieRelaye = nom => nom === kratos.nomCookie || /^csrf_token(_[A-Za-z0-9_-]+)?$/.test(nom);
+        await app.register(async portee => {
+            portee.removeAllContentTypeParsers();
+            portee.addContentTypeParser('*', { parseAs: 'buffer', bodyLimit: 64 * 1024 }, (req, corps, done) => done(null, corps));
+            portee.all('/kratos/*', async (req, reply) => {
+                const chemin = '/' + req.params['*'];
+                if (!chemin.startsWith('/self-service/') || chemin.includes('..') || chemin.includes('//')) {
+                    return reply.code(404).send({ ok: false, message: 'Ressource introuvable.' });
+                }
+                if (chemin.startsWith('/self-service/logout')) kratos.oublier(sessionKratos(req));
+                // Seuls les cookies de Kratos lui sont transmis (jamais la session du wiki)
+                const cookies = cookiesBruts(req, cookieRelaye).join('; ');
+                const entetes = { 'X-Forwarded-For': req.ip, 'X-Forwarded-Proto': req.protocol, 'X-Forwarded-Host': req.host };
+                for (const nom of ['accept', 'content-type', 'user-agent', 'accept-language']) if (req.headers[nom]) entetes[nom] = req.headers[nom];
+                if (cookies) entetes.cookie = cookies;
+                const requete = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '';
+                let r;
+                try {
+                    r = await kratos.relayer({ methode: req.method, chemin: chemin + requete, entetes, corps: req.body });
+                } catch (err) {
+                    if (!(err instanceof KratosIndisponible)) throw err;
+                    req.log.error(err.message);
+                    return reply.code(502).send({ ok: false, message: 'Le service de connexion est momentanément indisponible.' });
+                }
+                reply.code(r.statut).headers(r.entetes);
+                if (r.cookies.length) reply.header('set-cookie', r.cookies);
+                return reply.send(r.corps);
+            });
+        });
+    }
+
     // ------------------------------------------------------------ Membres du wiki (propriétaires)
 
     app.get('/api/membres', async (req, reply) => {
@@ -287,7 +360,14 @@ export async function construireApp({ config, db, storage }) {
     app.post('/api/membres', async req => {
         await exigerRole(req, 'owner');
         const { identifiant, email, nom, motDePasse, role } = corpsJson(req);
-        let u = await comptes.trouverParIdentifiant(identifiant);
+        let u = await comptes.trouverParIdentifiant(identifiant || email);
+        if (!u && kratos && !motDePasse) {
+            // Mode Kratos : invitation par email ; le compte sera relié à la première connexion avec cette adresse (vérifiée)
+            const adresse = String(email || identifiant || '').trim().toLowerCase();
+            if (!adresse.includes('@')) throw new ErreurWiki(400, "Indiquez l'adresse email du membre : il se connectera avec le compte correspondant.");
+            const ident = identifiant && !String(identifiant).includes('@') ? identifiant : null;
+            u = await comptes.creerUtilisateur({ identifiant: ident, email: adresse, nom, externe: true });
+        }
         if (!u) u = await comptes.creerUtilisateur({ identifiant, email, nom, motDePasse });
         await comptes.definirRole(wikiId, u.id, role || 'editor');
         return { ok: true, id: u.id };

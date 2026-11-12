@@ -1,0 +1,43 @@
+# Wiziki avec connexion par Ory Kratos (WIZIKI_AUTH=kratos). Voir docs/kratos.md.
+# Usage : cp .env.example .env, compléter .env, remplacer wiki.exemple.org dans kratos/kratos.yml, puis `docker compose up -d`.
+services:
+  wiziki:
+    build:
+      context: ../..
+      dockerfile: docker/standalone/Dockerfile
+    restart: always
+    ports:
+      - "127.0.0.1:3100:3000" # derrière un reverse proxy HTTPS (Caddy, Nginx…)
+    environment:
+      - WIZIKI_AUTH=kratos
+      - WIZIKI_KRATOS_URL=http://kratos:4433
+      - TRUST_PROXY=1
+    volumes:
+      - ./data:/data
+    depends_on:
+      - kratos
+
+  # API publique de Kratos : jamais exposée directement, le wiki la relaie sous /kratos/ (parcours self-service seulement)
+  kratos:
+    image: oryd/kratos:v1.3.0
+    restart: always
+    command: serve -c /etc/config/kratos/kratos.yml --watch-courier
+    environment: &kratos-env
+      - DSN=sqlite:///var/lib/sqlite/kratos.sqlite?_fk=true&mode=rwc
+      - SECRETS_COOKIE=${KRATOS_SECRET_COOKIE:?à définir dans .env}
+      - SECRETS_CIPHER=${KRATOS_SECRET_CIPHER:?à définir dans .env}
+      - COURIER_SMTP_CONNECTION_URI=${SMTP_URI:?à définir dans .env}
+      - COURIER_SMTP_FROM_ADDRESS=${SMTP_FROM:?à définir dans .env}
+    volumes:
+      - ./kratos:/etc/config/kratos:ro
+      - ./kratos-data:/var/lib/sqlite
+    depends_on:
+      kratos-migrate:
+        condition: service_completed_successfully
+
+  kratos-migrate:
+    image: oryd/kratos:v1.3.0
+    command: migrate sql -e --yes
+    environment: *kratos-env
+    volumes:
+      - ./kratos-data:/var/lib/sqlite

@@ -1,6 +1,7 @@
 // Écrans liés aux comptes : installation, membres du wiki, mot de passe.
 // Les dépendances (requêtes API, session courante) sont fournies par app.js via configurerComptes().
 import { echapperHtml } from './markdown.js';
+import { ouvrirCompteKratos } from './kratos.js';
 
 let deps = null;
 /** @param {{ apiEcrire: Function, session: () => any }} d */
@@ -25,12 +26,20 @@ async function envoyerJson(methode, url, corps) {
 
 /** Affiche l'écran d'installation ; se résout une fois le compte propriétaire créé (et connecté). */
 export function installer() {
+    const kratos = deps.session().auth === 'kratos';
+    // Mode Kratos : le compte existe déjà (connexion faite), seul le jeton est demandé
+    for (const el of document.querySelectorAll('#form-installation .auth-local')) {
+        el.classList.toggle('hidden', kratos);
+        if (el.tagName === 'INPUT' && el.dataset.requis !== undefined) el.required = !kratos;
+    }
+    $('inst-kratos').classList.toggle('hidden', !kratos);
+    if (kratos) $('inst-kratos').textContent = `Connecté avec ${deps.session().utilisateur?.email || deps.session().utilisateur?.nom || 'votre compte'}. Saisissez le jeton pour devenir propriétaire du wiki.`;
     $('modal-installation').classList.remove('hidden');
     $('inst-jeton').focus();
     return new Promise(resolve => {
         $('form-installation').onsubmit = async (e) => {
             e.preventDefault();
-            if ($('inst-mdp').value !== $('inst-mdp2').value) { afficherErreur('inst-erreur', 'Les deux mots de passe ne correspondent pas.'); return; }
+            if (!kratos && $('inst-mdp').value !== $('inst-mdp2').value) { afficherErreur('inst-erreur', 'Les deux mots de passe ne correspondent pas.'); return; }
             const { ok, data } = await envoyerJson('POST', '/api/installation', {
                 jeton: $('inst-jeton').value.trim(), identifiant: $('inst-identifiant').value,
                 nom: $('inst-nom').value, email: $('inst-email').value || null, motDePasse: $('inst-mdp').value,
@@ -57,7 +66,7 @@ async function chargerMembres() {
         tr.className = 'border-t';
         const derniere = m.last_login_at ? new Date(m.last_login_at).toLocaleDateString('fr-FR') : 'jamais';
         tr.innerHTML = `
-            <td class="p-2"><div class="font-medium">${echapperHtml(m.nom)}</div><div class="text-xs text-gray-400">${echapperHtml(m.identifiant)}${m.email ? ' · ' + echapperHtml(m.email) : ''}</div></td>
+            <td class="p-2"><div class="font-medium">${echapperHtml(m.nom)}</div><div class="text-xs text-gray-400">${echapperHtml(m.identifiant)}${m.email ? ' · ' + echapperHtml(m.email) : ''}${m.sans_mot_de_passe && !m.externe ? ' · <i>invité, pas encore connecté</i>' : ''}</div></td>
             <td class="p-2"><select class="choix-role p-1 border rounded text-xs">
                 ${Object.entries(LIBELLES_ROLES).map(([v, l]) => `<option value="${v}" ${v === m.role ? 'selected' : ''}>${l}</option>`).join('')}
             </select></td>
@@ -81,6 +90,12 @@ async function chargerMembres() {
 export function ouvrirMembres() {
     afficherErreur('membre-erreur', '');
     $('form-membre').reset();
+    // Mode Kratos : on invite par email ; un mot de passe ne sert que pour un compte local de secours
+    const kratos = deps.session().auth === 'kratos';
+    $('membre-identifiant').placeholder = kratos ? 'Email du membre (ou identifiant existant)' : 'Identifiant (ou compte existant)';
+    $('membre-email').classList.toggle('hidden', kratos);
+    $('membre-mdp').placeholder = kratos ? 'Mot de passe : seulement pour un compte local de secours' : 'Mot de passe initial (nouveau compte, 10 caractères minimum)';
+    $('membre-aide-kratos').classList.toggle('hidden', !kratos);
     $('modal-membres').classList.remove('hidden');
     chargerMembres();
 }
@@ -104,6 +119,7 @@ function brancherFormulaireMembre() {
 
 export function ouvrirMonCompte() {
     const { utilisateur, role } = deps.session();
+    if (utilisateur?.externe) { ouvrirCompteKratos(); return; } // email, mot de passe, double authentification : gérés par Kratos
     $('form-compte').reset();
     $('compte-identifiant').value = utilisateur?.identifiant || '';
     $('compte-info').textContent = utilisateur ? `${utilisateur.nom} (${utilisateur.identifiant}) · ${libelleRole(role)}` : '';

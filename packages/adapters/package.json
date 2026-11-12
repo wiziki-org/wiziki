@@ -7,7 +7,8 @@
   "exports": {
     "./db": "./src/db/index.js",
     "./storage": "./src/storage/index.js",
-    "./archive": "./src/archive/index.js"
+    "./archive": "./src/archive/index.js",
+    "./kratos": "./src/kratos/index.js"
   },
   "dependencies": {
     "better-sqlite3": "13.0.3",

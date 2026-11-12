@@ -13,10 +13,6 @@ if (appliquees.length) console.log(`Base de données : migrations appliquées ($
 const storage = creerStockageDisque(config.dossierFichiers);
 const app = await construireApp({ config, db, storage });
 
-if (!config.motDePasseAdmin) {
-    app.log.warn('ADMIN_PASSWORD non défini : le wiki est en LECTURE SEULE. Définissez ADMIN_PASSWORD pour pouvoir le modifier.');
-}
-
 const arreter = async signal => {
     app.log.info(`${signal} reçu, arrêt du serveur`);
     await app.close();
