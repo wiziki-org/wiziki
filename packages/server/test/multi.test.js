@@ -30,6 +30,7 @@ before(async () => {
             },
             urlConnexion: (req, w) => `https://portail.test/aller?wiki=${w.slug}`,
             urlCompte: 'https://portail.test/compte',
+            urlSignalement: (req, w) => `https://portail.test/signaler?wiki=${w.slug}`,
             echangerCode: async (code, req, w) => {
                 const c = codes.get(code);
                 codes.delete(code);
@@ -73,6 +74,7 @@ test('session : connexion externe annoncée, pas d\'installation', async () => {
     assert.equal(s.auth, 'externe');
     assert.equal(s.connexionExterne, 'https://portail.test/aller?wiki=alpha');
     assert.equal(s.compteExterne, 'https://portail.test/compte');
+    assert.equal(s.signalement, 'https://portail.test/signaler?wiki=alpha');
     assert.equal(s.installationRequise, false);
 });
 

@@ -323,6 +323,16 @@ function nettoyerTitresArbre(elements) {
             brancherComptes();
             brancherSauvegarde();
             await lireSession();
+            // Wiki hébergé sur une plateforme : lien « Signaler un contenu » sur chaque page
+            if (sessionCourante.signalement) {
+                const lien = document.getElementById('lien-signaler');
+                lien.addEventListener('click', e => {
+                    e.preventDefault();
+                    window.open(sessionCourante.signalement + '&page=' + encodeURIComponent(window.location.href), '_blank', 'noopener');
+                });
+                lien.href = sessionCourante.signalement;
+                lien.classList.remove('hidden');
+            }
 
             // Première ouverture d'une installation neuve : création du compte propriétaire
             if (sessionCourante.installationRequise) {
@@ -341,7 +351,7 @@ function nettoyerTitresArbre(elements) {
             if (modeAdminDemande && !isAdmin) {
                 if (!sessionCourante.connecte) await demanderConnexion();
                 // Mode Kratos : une invitation n'est reliée au compte qu'une fois l'adresse email vérifiée
-                if (!peut('editor') && sessionCourante.connecte && sessionCourante.utilisateur?.externe && !sessionCourante.role
+                if (!peut('editor') && sessionCourante.auth === 'kratos' && sessionCourante.connecte && sessionCourante.utilisateur?.externe && !sessionCourante.role
                     && confirm("Votre compte n'a pas encore de droits sur ce wiki.\n\nSi vous avez été invité avec votre adresse email, il faut d'abord la vérifier. Recevoir un code de vérification maintenant ?")) {
                     await verifierAdresseKratos();
                     await lireSession(true);

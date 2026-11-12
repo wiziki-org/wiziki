@@ -37,6 +37,7 @@ const TYPES_STATIQUES = { '.js': 'text/javascript; charset=utf-8', '.css': 'text
  * @property {(req: any) => Promise<any|null>} resoudreWiki wiki de la requête (ligne de la table `wikis`), ou null (404)
  * @property {(req: any, wiki: any) => string} urlConnexion page de connexion externe ; le wiki y ajoute `suite=<chemin>`
  * @property {string} [urlCompte] page « Mon compte » externe
+ * @property {(req: any, wiki: any) => string} [urlSignalement] page « Signaler un contenu » ; le wiki y ajoute `page=<adresse>`
  * @property {(code: string, req: any, wiki: any) => Promise<{ id: string, email: string|null, emailVerifie: boolean, nom?: string|null }|null>} echangerCode
  *   au retour de la connexion externe (`/auth/retour?code=…`) : identité de la personne, ou null si le code est invalide
  */
@@ -266,7 +267,7 @@ export async function construireApp({ config, db, storage, multi = null }) {
         return {
             connecte: !!utilisateur, utilisateur, role, installationRequise: !!jetonInstallation, visibilite: w.visibilite,
             auth: multi ? 'externe' : config.auth, ...(kratos ? { kratosIndisponible, secondeEtape, inscription: config.kratos.inscription } : {}),
-            ...(multi ? { connexionExterne: multi.urlConnexion(req, w), compteExterne: multi.urlCompte || null } : {}),
+            ...(multi ? { connexionExterne: multi.urlConnexion(req, w), compteExterne: multi.urlCompte || null, signalement: multi.urlSignalement?.(req, w) || null } : {}),
         };
     });
 
