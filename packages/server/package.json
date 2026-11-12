@@ -4,7 +4,10 @@
   "private": true,
   "license": "AGPL-3.0-or-later",
   "type": "module",
-  "exports": { ".": "./src/app.js" },
+  "exports": {
+    ".": "./src/app.js",
+    "./config": "./src/config.js"
+  },
   "dependencies": {
     "@wiziki/core": "0.2.0",
     "@wiziki/adapters": "0.2.0",

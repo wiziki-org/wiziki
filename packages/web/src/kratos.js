@@ -129,10 +129,15 @@ function fermer(resultat) {
  *   `inscription` : lien « Créer un compte » (seulement si le wiki l'autorise, WIZIKI_KRATOS_INSCRIPTION=1)
  * @returns {Promise<'connecte'|'annule'|'secours'>}
  */
-export function connexionKratos({ message, secours, secondeEtape = false } = {}) {
+export function connexionKratos({ message, secours, secondeEtape = false, inscription = false } = {}) {
     // Seconde étape : la session existe (mot de passe), Kratos demande le code de l'application d'authentification
     const params = new URLSearchParams(secondeEtape ? { aal: 'aal2' } : {});
-    return ouvrir('connexion', params, { message, secours: secondeEtape ? null : secours });
+    return ouvrir('connexion', params, { message, secours: secondeEtape ? null : secours, inscription: !secondeEtape && inscription });
+}
+
+/** Création de compte (seulement là où l'inscription est ouverte) */
+export function inscriptionKratos() {
+    return ouvrir('inscription', new URLSearchParams(), { inscription: true });
 }
 
 /** Vérification de l'adresse email (un code est envoyé par Kratos) */

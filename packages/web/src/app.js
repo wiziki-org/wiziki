@@ -301,7 +301,8 @@ function nettoyerTitresArbre(elements) {
         }
 
         function ouvrirDepuisUrl() {
-            const slug = slugDepuisUrl() || configGlobal.parametres.pageAccueil;
+            // Sans page d'accueil choisie : la première page de l'arbre
+            const slug = slugDepuisUrl() || configGlobal.parametres.pageAccueil || configGlobal.arbre?.[0]?.id;
             if (!slug) {
                 document.getElementById('zone-lecture').classList.add('hidden');
                 document.getElementById('zone-vide').classList.remove('hidden');
