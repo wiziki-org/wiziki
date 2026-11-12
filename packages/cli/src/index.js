@@ -27,6 +27,7 @@ Commandes :
   mot-de-passe <identifiant>      Définit un nouveau mot de passe (ferme toutes ses sessions)
       Le mot de passe est lu dans $WIZIKI_NOUVEAU_MOT_DE_PASSE, sinon demandé au clavier
   utilisateurs                    Liste les comptes et leur rôle
+  relier-kratos <identifiant> <id-kratos>   Relie un compte à une identité Kratos (WIZIKI_AUTH=kratos)
 
 Options communes :
   --data <dossier>                Dossier des données (défaut : $WIZIKI_DATA_DIR ou ./data)
@@ -69,6 +70,12 @@ try {
         case 'utilisateur-ajouter': await ajouterUtilisateur(args[0]); break;
         case 'mot-de-passe': await definirMotDePasse(args[0]); break;
         case 'utilisateurs': await listerUtilisateurs(); break;
+        case 'relier-kratos': {
+            if (args.length < 2) throw new Error('Usage : wiziki relier-kratos <identifiant> <id-kratos>');
+            const u = await comptes.relierKratos(args[0], args[1]);
+            console.log(`✅ Compte « ${u.identifiant} » relié à l'identité Kratos ${args[1]}.`);
+            break;
+        }
         default: console.error(`Commande inconnue : ${commande}\n`); console.log(AIDE); process.exitCode = 1;
     }
 } catch (err) {

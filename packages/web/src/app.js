@@ -146,7 +146,7 @@ function selectionnerTexteInDOM(container, texte) {
         // Mode Kratos : connexion par le serveur d'identification ; le formulaire local reste accessible en secours
         async function demanderConnexion(message) {
             if (sessionCourante.auth === 'kratos') {
-                const r = await connexionKratos({ message, secours: true, secondeEtape: !!sessionCourante.secondeEtape });
+                const r = await connexionKratos({ message, secours: true, secondeEtape: !!sessionCourante.secondeEtape, inscription: !!sessionCourante.inscription });
                 if (r === 'connecte') {
                     await lireSession(true);
                     // Double authentification activée : après le mot de passe, Kratos demande le code
@@ -319,7 +319,7 @@ function nettoyerTitresArbre(elements) {
                 // Mode Kratos : on se connecte d'abord avec son compte, le jeton le rend ensuite propriétaire
                 if (sessionCourante.auth === 'kratos') {
                     while (!sessionCourante.connecte) {
-                        await connexionKratos({ message: "Installation : connectez-vous (ou créez votre compte), puis saisissez le jeton d'installation." });
+                        await connexionKratos({ message: "Installation : connectez-vous, puis saisissez le jeton d'installation.", inscription: !!sessionCourante.inscription });
                         await lireSession(true);
                     }
                 }

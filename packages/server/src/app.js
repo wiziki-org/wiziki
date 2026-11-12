@@ -245,7 +245,7 @@ export async function construireApp({ config, db, storage }) {
         const w = await service.trouverWikiParId(wikiId);
         return {
             connecte: !!utilisateur, utilisateur, role, installationRequise: !!jetonInstallation, visibilite: w.visibilite,
-            auth: config.auth, ...(kratos ? { kratosIndisponible, secondeEtape } : {}),
+            auth: config.auth, ...(kratos ? { kratosIndisponible, secondeEtape, inscription: config.kratos.inscription } : {}),
         };
     });
 
@@ -323,7 +323,8 @@ export async function construireApp({ config, db, storage }) {
             portee.addContentTypeParser('*', { parseAs: 'buffer', bodyLimit: 64 * 1024 }, (req, corps, done) => done(null, corps));
             portee.all('/kratos/*', async (req, reply) => {
                 const chemin = '/' + req.params['*'];
-                if (!chemin.startsWith('/self-service/') || chemin.includes('..') || chemin.includes('//')) {
+                if (!chemin.startsWith('/self-service/') || chemin.includes('..') || chemin.includes('//')
+                    || (!config.kratos.inscription && chemin.startsWith('/self-service/registration'))) {
                     return reply.code(404).send({ ok: false, message: 'Ressource introuvable.' });
                 }
                 if (chemin.startsWith('/self-service/logout')) kratos.oublier(sessionKratos(req));

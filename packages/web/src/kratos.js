@@ -125,7 +125,8 @@ function fermer(resultat) {
 
 /**
  * Ouvre la fenêtre de connexion Kratos.
- * @param {{ message?: string, secours?: boolean, secondeEtape?: boolean }} options `secours` : lien vers le compte local de secours
+ * @param {{ message?: string, secours?: boolean, secondeEtape?: boolean, inscription?: boolean }} options `secours` : lien vers le compte local de secours ;
+ *   `inscription` : lien « Créer un compte » (seulement si le wiki l'autorise, WIZIKI_KRATOS_INSCRIPTION=1)
  * @returns {Promise<'connecte'|'annule'|'secours'>}
  */
 export function connexionKratos({ message, secours, secondeEtape = false } = {}) {
@@ -270,7 +271,7 @@ function rendreFlux(flux, nom, titre, envoyer, aller, options) {
     const lien = (texte, onclick) => h('button.text-xs.text-gray-500.hover:text-indigo-600', { type: 'button', onclick }, texte);
     if (nom === 'connexion' && !deuxEtapes && !rafraichir) {
         liens.push(lien('Mot de passe oublié ?', () => aller('oubli')));
-        liens.push(lien('Créer un compte', () => aller('inscription')));
+        if (options.inscription) liens.push(lien('Créer un compte', () => aller('inscription')));
         if (options.secours) liens.push(lien('Compte local (secours)', () => fermer('secours')));
     } else if (nom === 'inscription' || nom === 'oubli') {
         liens.push(lien('J’ai déjà un compte', () => aller('connexion')));

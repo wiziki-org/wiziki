@@ -125,9 +125,10 @@ export function creerServiceComptes({ db }) {
 
     /**
      * Compte wiziki d'une personne connectée par Kratos, créé à sa première venue.
-     * Un compte existant est relié par son adresse email seulement si Kratos l'a vérifiée
-     * (ou si `adressesNonVerifiees` est explicitement accepté) : sinon, s'inscrire avec l'adresse
-     * d'un membre suffirait à prendre sa place.
+     * Seule une invitation en attente (compte sans mot de passe, créé par le propriétaire) est reprise par
+     * l'adresse email, et seulement si Kratos l'a vérifiée (ou si `adressesNonVerifiees` est explicitement accepté).
+     * Un compte qui a un mot de passe (admin, membre local) n'est JAMAIS relié automatiquement :
+     * cela se fait sur le serveur avec `wiziki relier-kratos`.
      * @param {{ id: string, email: string|null, emailVerifie: boolean, nom?: string|null }} identite
      */
     async function utilisateurKratos(identite, { adressesNonVerifiees = false } = {}) {
@@ -136,7 +137,8 @@ export function creerServiceComptes({ db }) {
         const adresseFiable = identite.email && (identite.emailVerifie || adressesNonVerifiees) ? identite.email : null;
         if (!u && adresseFiable) {
             const existant = await db.selectFrom('users').select(colonnes)
-                .where('email', '=', adresseFiable).where('kratos_id', 'is', null).executeTakeFirst();
+                .where('email', '=', adresseFiable).where('kratos_id', 'is', null)
+                .where('password_hash', '=', SANS_MOT_DE_PASSE).executeTakeFirst();
             if (existant) {
                 await db.updateTable('users').set({ kratos_id: identite.id, email_verifie: identite.emailVerifie ? 1 : 0 })
                     .where('id', '=', existant.id).where('kratos_id', 'is', null).execute();
@@ -181,6 +183,19 @@ export function creerServiceComptes({ db }) {
             const autre = await trx.selectFrom('users').select('id').where('email', '=', email).executeTakeFirst();
             if (!autre) await trx.updateTable('users').set({ email, email_verifie: 1 }).where('id', '=', userId).execute();
         });
+    }
+
+    /** Relie un compte à une identité Kratos (commande serveur `wiziki relier-kratos`) */
+    async function relierKratos(identifiant, kratosId) {
+        if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(kratosId || ''))) {
+            throw new ErreurWiki(400, 'Identifiant Kratos invalide (UUID attendu).');
+        }
+        const u = await trouverParIdentifiant(identifiant);
+        if (!u) throw new ErreurWiki(404, `Compte « ${identifiant} » introuvable.`);
+        const autre = await db.selectFrom('users').select('identifiant').where('kratos_id', '=', kratosId).executeTakeFirst();
+        if (autre && autre.identifiant !== u.identifiant) throw new ErreurWiki(409, `Cette identité Kratos est déjà reliée au compte « ${autre.identifiant} ».`);
+        await db.updateTable('users').set({ kratos_id: kratosId.toLowerCase() }).where('id', '=', u.id).execute();
+        return publicUtilisateur({ ...u, kratos_id: kratosId });
     }
 
     async function noterConnexion(userId) {
@@ -264,7 +279,7 @@ export function creerServiceComptes({ db }) {
 
     return {
         compterUtilisateurs, trouverParIdentifiant, creerUtilisateur, changerMotDePasse, authentifier,
-        utilisateurKratos, noterConnexion,
+        utilisateurKratos, noterConnexion, relierKratos,
         ouvrirSession, utilisateurDeSession, fermerSession, purgerSessionsExpirees,
         role, listerMembres, definirRole, retirerMembre,
         verifierMotDePasseUtilisateur: async (userId, motDePasse) => {

@@ -40,6 +40,8 @@ export function lireConfig(env = process.env) {
             // Par défaut, une adresse email n'est reconnue que si Kratos l'a vérifiée (sinon n'importe qui
             // pourrait s'inscrire avec l'adresse d'un membre et prendre sa place)
             adressesNonVerifiees: env.WIZIKI_KRATOS_ADRESSES_NON_VERIFIEES === '1',
+            // Inscription depuis le wiki : fermée par défaut (les comptes se créent sur le serveur d'identification)
+            inscription: env.WIZIKI_KRATOS_INSCRIPTION === '1',
         } : null,
     };
 }

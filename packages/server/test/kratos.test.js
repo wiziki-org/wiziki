@@ -239,3 +239,32 @@ test('adresse vérifiée après la première connexion : l\'invitation est repri
     const membres = (await app.inject({ method: 'GET', url: '/api/membres', headers: marie })).json();
     assert.equal(membres.filter(m => m.email === 'lea@exemple.org').length, 1, "l'invitation en attente a disparu");
 });
+
+test('inscription fermée par défaut : le relais refuse les parcours d\'inscription', async () => {
+    assert.equal((await session()).inscription, false);
+    for (const url of ['/kratos/self-service/registration/browser', '/kratos/self-service/registration?flow=x', '/kratos/self-service/registration/flows?id=x']) {
+        assert.equal((await app.inject({ method: 'GET', url })).statusCode, 404, url);
+    }
+});
+
+test('un compte avec mot de passe n\'est jamais relié par son adresse email, seulement par wiziki relier-kratos', async () => {
+    const marie = avec('s-marie');
+    const r = await app.inject({ method: 'POST', url: '/api/membres', payload: { identifiant: 'chef', email: 'chef@exemple.org', motDePasse: 'mot-de-passe-du-chef', role: 'owner' }, headers: marie });
+    assert.equal(r.statusCode, 200, r.body);
+    // Quelqu'un crée une identité Kratos avec cette adresse, même vérifiée : aucun droit
+    sessions.set('s-intrus', identite('id-intrus', 'chef@exemple.org', true));
+    const intrus = await session('s-intrus');
+    assert.equal(intrus.role, null);
+    assert.notEqual(intrus.utilisateur.identifiant, 'chef');
+
+    const { creerServiceComptes } = await import('@wiziki/core');
+    const comptes = creerServiceComptes({ db });
+    await assert.rejects(comptes.relierKratos('chef', 'pas-un-uuid'), /UUID/);
+    const id = '0b7c2a9e-4f1d-4c3b-9a8e-123456789abc';
+    await comptes.relierKratos('chef', id);
+    sessions.set('s-chef', identite(id, 'chef@exemple.org', true));
+    const chef = await session('s-chef');
+    assert.equal(chef.utilisateur.identifiant, 'chef');
+    assert.equal(chef.role, 'owner');
+    await assert.rejects(comptes.relierKratos('marie', id), /déjà reliée/);
+});

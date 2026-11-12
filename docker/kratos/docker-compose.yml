@@ -11,6 +11,9 @@ services:
     environment:
       - WIZIKI_AUTH=kratos
       - WIZIKI_KRATOS_URL=http://kratos:4433
+      # Inscription depuis le wiki (fermée par défaut) : utile ici, ce Kratos n'a pas d'autre page d'inscription.
+      # Une inscription ne donne aucun droit : le propriétaire invite les membres dans 👥 Membres.
+      - WIZIKI_KRATOS_INSCRIPTION=1
       - TRUST_PROXY=1
     volumes:
       - ./data:/data
