@@ -1,12 +1,16 @@
 #!/usr/bin/env node
 // Point d'entrée du serveur Wiziki (mode standalone).
-import { ouvrirSqlite, migrer } from '@wiziki/adapters/db';
+import { ouvrirSqlite, migrer, sauvegarderAvantMigration } from '@wiziki/adapters/db';
+import path from 'node:path';
 import { creerStockageDisque } from '@wiziki/adapters/storage';
 import { lireConfig } from './config.js';
 import { construireApp } from './app.js';
 
 const config = lireConfig();
 const db = ouvrirSqlite(config.fichierBase);
+// Mise à jour : la base est d'abord copiée dans data/sauvegardes/ (5 dernières copies gardées)
+const copie = await sauvegarderAvantMigration(db, path.join(config.dossierDonnees, 'sauvegardes'));
+if (copie) console.log(`Base de données sauvegardée avant mise à jour : ${copie}`);
 const appliquees = await migrer(db);
 if (appliquees.length) console.log(`Base de données : migrations appliquées (${appliquees.join(', ')})`);
 

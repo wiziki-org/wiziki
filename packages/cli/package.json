@@ -1,12 +1,14 @@
 {
   "name": "@wiziki/cli",
-  "version": "0.2.0",
+  "version": "1.0.0",
   "private": true,
   "license": "AGPL-3.0-or-later",
   "type": "module",
-  "bin": { "wiziki": "./src/index.js" },
+  "bin": {
+    "wiziki": "./src/index.js"
+  },
   "dependencies": {
-    "@wiziki/core": "0.2.0",
-    "@wiziki/adapters": "0.2.0"
+    "@wiziki/core": "1.0.0",
+    "@wiziki/adapters": "1.0.0"
   }
 }

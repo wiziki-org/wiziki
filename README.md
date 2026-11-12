@@ -2,7 +2,18 @@
 
 Moteur de wiki simple, auto-hébergeable, et base de la plateforme d'hébergement wiziki.org / mywiziki.com.
 
-## Démarrer en local
+## Installer
+
+```sh
+mkdir wiziki && cd wiziki
+curl -fsSLO https://raw.githubusercontent.com/wiziki-org/wiziki/main/docker/standalone/docker-compose.yml
+docker compose up -d                 # puis http://localhost:3100 ; jeton d'installation : docker compose logs wiziki
+```
+
+Tout est expliqué dans le [guide d'installation](docs/installation.md) : premier compte, HTTPS, mises à jour, sauvegardes.
+Les nouveautés de chaque version sont dans le [journal des versions](CHANGELOG.md).
+
+## Développer
 
 ```bash
 npm install

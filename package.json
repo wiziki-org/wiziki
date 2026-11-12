@@ -1,7 +1,7 @@
 {
   "name": "wiziki",
   "private": true,
-  "version": "0.2.0",
+  "version": "1.0.0",
   "description": "Wiziki — moteur de wiki auto-hébergeable et plateforme d'hébergement",
   "license": "AGPL-3.0-or-later",
   "homepage": "https://wiziki.org",

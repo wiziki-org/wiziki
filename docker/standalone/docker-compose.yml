@@ -1,16 +1,18 @@
-# Wiziki standalone. Usage : copier ce fichier, créer un .env avec ADMIN_PASSWORD=..., puis `docker compose up -d`
+# Wiziki avec Docker Compose. Mode d'emploi complet : docs/installation.md
+#   docker compose up -d          puis ouvrir http://localhost:3100
+#   docker compose logs wiziki    pour lire le jeton d'installation (premier démarrage)
 services:
   wiziki:
-    build:
-      context: ../..
-      dockerfile: docker/standalone/Dockerfile
-    container_name: wiziki
-    restart: always
+    image: ghcr.io/wiziki-org/wiziki:1     # version 1.x la plus récente (mise à jour : docker compose pull && docker compose up -d)
+    restart: unless-stopped
     ports:
-      - "127.0.0.1:3100:3000" # derrière un reverse proxy (Caddy, Nginx…)
+      - "127.0.0.1:3100:3000"              # accessible depuis cette machine ; pour Internet, passer par un reverse proxy HTTPS
     environment:
-      # Facultatif : crée le compte « admin » au premier démarrage. Sinon, écran d'installation (jeton dans `docker logs wiziki`)
+      # Facultatif : crée le compte « admin » au premier démarrage. Sans lui : écran d'installation (jeton dans les journaux)
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
       - TRUST_PROXY=1
     volumes:
-      - ./data:/data
+      - wiziki-data:/data                  # base SQLite, images, sauvegardes automatiques
+
+volumes:
+  wiziki-data:

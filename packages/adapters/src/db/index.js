@@ -33,15 +33,42 @@ export function ouvrirSqlite(fichier) {
     return db;
 }
 
+const migrateur = db => new Migrator({
+    db,
+    provider: { getMigrations: async () => MIGRATIONS },
+    migrationTableName: 'wiziki_migrations',
+    migrationLockTableName: 'wiziki_migrations_lock',
+});
+
+/** Migrations déjà appliquées et restant à appliquer */
+export async function etatMigrations(db) {
+    const infos = await migrateur(db).getMigrations();
+    return {
+        appliquees: infos.filter(m => m.executedAt).map(m => m.name),
+        enAttente: infos.filter(m => !m.executedAt).map(m => m.name),
+    };
+}
+
+/**
+ * Avant une mise à jour du schéma d'une base existante : copie cohérente dans `<dossier>/wiziki-avant-<migration>-<date>.db`,
+ * en gardant les `garder` dernières. Ne fait rien pour une base neuve ou déjà à jour. Renvoie le fichier créé, ou null.
+ */
+export async function sauvegarderAvantMigration(db, dossier, { garder = 5 } = {}) {
+    if (!db.sqlite) return null;
+    const { appliquees, enAttente } = await etatMigrations(db);
+    if (!appliquees.length || !enAttente.length) return null;
+    const date = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const fichier = path.join(dossier, `wiziki-avant-${enAttente[0]}-${date}.db`);
+    await sauvegarderSqlite(db, fichier);
+    const anciennes = fs.readdirSync(dossier).filter(f => /^wiziki-avant-.*\.db$/.test(f))
+        .map(f => ({ f, t: fs.statSync(path.join(dossier, f)).mtimeMs })).sort((a, b) => b.t - a.t);
+    for (const { f } of anciennes.slice(garder)) fs.rmSync(path.join(dossier, f), { force: true });
+    return fichier;
+}
+
 /** Applique les migrations manquantes. Renvoie la liste des migrations exécutées. */
 export async function migrer(db) {
-    const migrator = new Migrator({
-        db,
-        provider: { getMigrations: async () => MIGRATIONS },
-        migrationTableName: 'wiziki_migrations',
-        migrationLockTableName: 'wiziki_migrations_lock',
-    });
-    const { error, results } = await migrator.migrateToLatest();
+    const { error, results } = await migrateur(db).migrateToLatest();
     if (error) throw error;
     return (results || []).filter(r => r.status === 'Success').map(r => r.migrationName);
 }

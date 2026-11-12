@@ -5,7 +5,7 @@ import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { creerServiceWiki, creerServiceComptes, creerServiceArchive, arbreTolerant, ROLES, REGEX_SLUG, REGEX_CLE_FICHIER, TYPES_MIME } from '@wiziki/core';
 import { creerZip, lireZip } from '@wiziki/adapters/archive';
-import { ouvrirSqlite, migrer, sauvegarderSqlite } from '@wiziki/adapters/db';
+import { ouvrirSqlite, migrer, sauvegarderSqlite, sauvegarderAvantMigration } from '@wiziki/adapters/db';
 import { creerStockageDisque } from '@wiziki/adapters/storage';
 
 const AIDE = `Usage : wiziki <commande> [options]
@@ -30,6 +30,7 @@ Commandes :
   relier-kratos <identifiant> <id-kratos>   Relie un compte à une identité Kratos (WIZIKI_AUTH=kratos)
 
 Options communes :
+  --version, -v                   Affiche la version
   --data <dossier>                Dossier des données (défaut : $WIZIKI_DATA_DIR ou ./data)
 `;
 
@@ -44,10 +45,12 @@ const { values: opts, positionals } = parseArgs({
         email: { type: 'string' },
         nom: { type: 'string' },
         help: { type: 'boolean', short: 'h', default: false },
+        version: { type: 'boolean', short: 'v', default: false },
     },
 });
 
 const [commande, ...args] = positionals;
+if (opts.version) { console.log(`wiziki ${lireVersion()}`); process.exit(0); }
 if (!commande || opts.help) { console.log(AIDE); process.exit(commande ? 0 : 1); }
 
 const dossierDonnees = path.resolve(opts.data || process.env.WIZIKI_DATA_DIR || './data');
@@ -59,6 +62,8 @@ const comptes = creerServiceComptes({ db });
 const archives = creerServiceArchive({ db, storage, wikis: service, logiciel: { nom: 'wiziki', version: lireVersion() } });
 
 try {
+    const copie = await sauvegarderAvantMigration(db, path.join(dossierDonnees, 'sauvegardes'));
+    if (copie) console.log(`Base de données sauvegardée avant mise à jour : ${copie}`);
     await migrer(db);
     switch (commande) {
         case 'migrate': console.log('✅ Schéma à jour.'); break;
