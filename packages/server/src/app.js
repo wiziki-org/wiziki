@@ -34,7 +34,9 @@ const TYPES_STATIQUES = { '.js': 'text/javascript; charset=utf-8', '.css': 'text
 
 /**
  * @typedef {object} OptionsMulti Plusieurs wikis servis par un même serveur (ex. une plateforme d'hébergement)
- * @property {(req: any) => Promise<any|null>} resoudreWiki wiki de la requête (ligne de la table `wikis`), ou null (404)
+ * @property {(req: any) => Promise<any|null>} resoudreWiki wiki de la requête (ligne de la table `wikis`), ou null (404) ;
+ *   un wiki `suspendu` n'est pas servi (page « wiki suspendu », 403)
+ * @property {string} [contact] adresse affichée sur la page d'un wiki suspendu
  * @property {(req: any, wiki: any) => string} urlConnexion page de connexion externe ; le wiki y ajoute `suite=<chemin>`
  * @property {string} [urlCompte] page « Mon compte » externe
  * @property {(req: any, wiki: any) => string} [urlSignalement] page « Signaler un contenu » ; le wiki y ajoute `page=<adresse>`
@@ -103,6 +105,10 @@ export async function construireApp({ config, db, storage, multi = null }) {
         if (!multi) { req.wikiId = wikiUnique.id; return; }
         const w = await multi.resoudreWiki(req);
         if (!w) return reply.code(404).type('text/plain; charset=utf-8').header('Cache-Control', 'no-store').send('Wiki introuvable.');
+        if (w.suspendu) {
+            return reply.code(403).type('text/plain; charset=utf-8').header('Cache-Control', 'no-store')
+                .send('Ce wiki a été suspendu.' + (multi.contact ? ` Pour toute question : ${multi.contact}` : ''));
+        }
         req.wikiId = w.id;
     });
     app.addHook('onClose', async () => clearInterval(purge));

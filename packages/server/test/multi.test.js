@@ -30,6 +30,7 @@ before(async () => {
             },
             urlConnexion: (req, w) => `https://portail.test/aller?wiki=${w.slug}`,
             urlCompte: 'https://portail.test/compte',
+            contact: 'contact@exemple.org',
             urlSignalement: (req, w) => `https://portail.test/signaler?wiki=${w.slug}`,
             echangerCode: async (code, req, w) => {
                 const c = codes.get(code);
@@ -67,6 +68,12 @@ test('le wiki dépend de l\'adresse ; adresse inconnue → 404', async () => {
     assert.match((await app.inject({ method: 'GET', url: '/', headers: sur('beta') })).body, /<title>Beta<\/title>/);
     assert.equal((await app.inject({ method: 'GET', url: '/', headers: sur('gamma') })).statusCode, 404);
     assert.equal((await app.inject({ method: 'GET', url: '/api/session', headers: { host: 'autre.exemple.org' } })).statusCode, 404);
+    // Wiki suspendu : page explicite, rien n'est servi
+    await db.updateTable('wikis').set({ suspendu: 1 }).where('slug', '=', 'beta').execute();
+    const suspendu = await app.inject({ method: 'GET', url: '/api/page/accueil', headers: sur('beta') });
+    assert.equal(suspendu.statusCode, 403);
+    assert.match(suspendu.body, /suspendu.*contact@exemple\.org/);
+    await db.updateTable('wikis').set({ suspendu: 0 }).where('slug', '=', 'beta').execute();
 });
 
 test('session : connexion externe annoncée, pas d\'installation', async () => {
