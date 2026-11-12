@@ -201,7 +201,15 @@ async function afficherEcran(nom, params, options) {
                 form.before(h('p.text-xs.text-red-600.mb-2', {}, 'Connexion au serveur impossible. Vérifiez votre réseau.'));
                 return;
             }
-            if (r.corps?.ui) afficherFlux(r.corps); // erreurs de saisie, étape suivante ou confirmation
+            if (r.corps?.ui && nom === 'compte' && r.corps.state === 'success') {
+                // Réglage enregistré (ex. nouveau mot de passe après « mot de passe oublié ») : confirmation bien visible
+                carte.replaceChildren(
+                    h('h3.text-lg.font-bold.text-gray-900.mb-3', {}, ecran.titre),
+                    h('p.text-sm.text-green-700.mb-4', {}, '✅ Modifications enregistrées.'),
+                    h('div.flex.justify-end', {}, h('button', { type: 'button', class: CLASSES_BOUTON, onclick: () => fermer('connecte') }, 'Continuer')));
+                carte.querySelector('button')?.focus();
+            }
+            else if (r.corps?.ui) afficherFlux(r.corps); // erreurs de saisie, étape suivante
             else if (r.statut >= 200 && r.statut < 300) {
                 // Inscription réussie : Kratos demande de vérifier l'adresse (code envoyé par email)
                 const suite = (r.corps?.continue_with || []).find(c => c.action === 'show_verification_ui');
