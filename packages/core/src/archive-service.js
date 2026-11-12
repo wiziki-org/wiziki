@@ -187,6 +187,15 @@ export function creerServiceArchive({ db, storage, wikis, logiciel = { nom: 'wiz
         }
         const anciennesCles = (await db.selectFrom('media').select('cle').where('wiki_id', '=', wikiId).execute()).map(m => m.cle);
 
+        // Quota : l'import remplace toutes les images du wiki
+        if (wikis.quotaOctets) {
+            const total = donnees.images.reduce((n, img) => n + img.octets.length, 0);
+            if (total > wikis.quotaOctets) {
+                throw new ErreurWiki(413, `Les images de cette archive font ${(total / 1024 / 1024).toFixed(1)} Mo : `
+                    + `la limite de ce wiki est de ${Math.round(wikis.quotaOctets / 1024 / 1024)} Mo.`);
+            }
+        }
+
         // 1. Fichiers d'abord : si la suite échoue, l'ancien wiki reste intact en base
         for (const img of donnees.images) await storage.ecrire(wikiId, img.cle, img.octets);
 

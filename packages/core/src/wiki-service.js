@@ -10,7 +10,28 @@ import {
 
 const maintenant = () => new Date().toISOString();
 
-export function creerServiceWiki({ db, storage }) {
+const MO = 1024 * 1024;
+
+/** @param {{ db: any, storage: any, quotaOctets?: number }} deps `quotaOctets` : espace maximal des images d'un wiki (0 = illimité) */
+export function creerServiceWiki({ db, storage, quotaOctets = 0 }) {
+
+    // ---------------------------------------------------------------- Espace (images)
+
+    async function espaceUtilise(wikiId) {
+        const r = await db.selectFrom('media').select(eb => eb.fn.coalesce(eb.fn.sum('taille'), eb.lit(0)).as('total'))
+            .where('wiki_id', '=', wikiId).executeTakeFirst();
+        return Number(r?.total || 0);
+    }
+
+    /** Refuse un ajout qui dépasserait le quota ; `libere` : octets remplacés par cet ajout */
+    async function verifierQuota(wikiId, ajout, libere = 0) {
+        if (!quotaOctets) return;
+        const apres = (await espaceUtilise(wikiId)) - libere + ajout;
+        if (apres > quotaOctets) {
+            throw new ErreurWiki(413, `Espace plein : les images de ce wiki dépasseraient ${Math.round(quotaOctets / MO)} Mo `
+                + `(${(apres / MO).toFixed(1)} Mo). Supprimez des images inutiles ou réduisez leur taille.`);
+        }
+    }
 
     // ---------------------------------------------------------------- Wikis
 
@@ -29,6 +50,20 @@ export function creerServiceWiki({ db, storage }) {
 
     async function trouverWikiParId(id) {
         return db.selectFrom('wikis').selectAll().where('id', '=', id).executeTakeFirst();
+    }
+
+    /** Supprime définitivement un wiki : pages, historique, membres, images (base et fichiers) */
+    async function supprimerWiki(wikiId) {
+        await db.transaction().execute(async trx => {
+            await trx.deleteFrom('redirections').where('wiki_id', '=', wikiId).execute();
+            await trx.deleteFrom('revisions').where('wiki_id', '=', wikiId).execute();
+            await trx.updateTable('pages').set({ parent_id: null }).where('wiki_id', '=', wikiId).execute();
+            await trx.deleteFrom('pages').where('wiki_id', '=', wikiId).execute();
+            await trx.deleteFrom('media').where('wiki_id', '=', wikiId).execute();
+            await trx.deleteFrom('members').where('wiki_id', '=', wikiId).execute();
+            await trx.deleteFrom('wikis').where('id', '=', wikiId).execute();
+        });
+        if (storage?.supprimerWiki) await storage.supprimerWiki(wikiId);
     }
 
     async function listerWikis() {
@@ -278,6 +313,7 @@ export function creerServiceWiki({ db, storage }) {
         if (octets.length > TAILLE_MAX_IMAGE) throw new ErreurWiki(413, 'Image trop volumineuse.');
         const type = detecterTypeImage(octets);
         if (!type) throw new ErreurWiki(415, 'Format non accepté : seules les images PNG, JPEG, GIF et WebP sont autorisées.');
+        await verifierQuota(wikiId, octets.length);
         const cle = `uploads/img_${Date.now()}_${crypto.randomBytes(4).toString('hex')}.${type.ext}`;
         await storage.ecrire(wikiId, cle, octets);
         await db.insertInto('media').values({
@@ -291,6 +327,8 @@ export function creerServiceWiki({ db, storage }) {
         if (!REGEX_CLE_FICHIER.test(cle)) throw new ErreurWiki(400, `Nom de fichier invalide : ${cle}`);
         const mime = TYPES_MIME[path.extname(cle).toLowerCase()];
         if (!mime) throw new ErreurWiki(415, `Type de fichier non géré : ${cle}`);
+        const ancien = await db.selectFrom('media').select('taille').where('wiki_id', '=', wikiId).where('cle', '=', cle).executeTakeFirst();
+        await verifierQuota(wikiId, octets.length, ancien?.taille || 0);
         await storage.ecrire(wikiId, cle, octets);
         const existe = await db.selectFrom('media').select('id').where('wiki_id', '=', wikiId).where('cle', '=', cle).executeTakeFirst();
         if (existe) {
@@ -316,7 +354,7 @@ export function creerServiceWiki({ db, storage }) {
     }
 
     return {
-        trouverWikiParSlug, trouverWikiParId, creerWiki, listerWikis,
+        trouverWikiParSlug, trouverWikiParId, creerWiki, listerWikis, supprimerWiki, espaceUtilise, quotaOctets,
         lireStructure, enregistrerStructure,
         trouverPage, lirePage, enregistrerPage, supprimerPage, renommerPage, listerRevisions, lireRedirections, suivreRedirection,
         lireRevision, restaurerRevision, listerCorbeille, restaurerPage,

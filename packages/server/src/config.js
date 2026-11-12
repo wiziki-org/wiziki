@@ -33,6 +33,8 @@ export function lireConfig(env = process.env) {
         // Wiki servi en mode standalone (créé automatiquement s'il n'existe pas)
         slugWiki: env.WIZIKI_WIKI || 'default',
         logs: env.WIZIKI_LOG_LEVEL || 'info',
+        // Espace maximal des images de chaque wiki, en Mo (0 ou absent = illimité)
+        quotaOctets: Math.max(0, parseInt(env.WIZIKI_QUOTA_MO, 10) || 0) * 1024 * 1024,
         auth,
         kratos: auth === 'kratos' ? {
             url: kratosUrl,

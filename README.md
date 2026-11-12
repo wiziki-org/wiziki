@@ -27,6 +27,7 @@ Les données sont dans `./data` (ou `$WIZIKI_DATA_DIR`) : `wiziki.db` (SQLite) e
 | `WIZIKI_LOG_LEVEL` | `info`, `warn`, `error`, `silent` | `info` |
 | `WIZIKI_AUTH` | `local` (comptes intégrés) ou `kratos` (connexion par un serveur Ory Kratos, voir [docs/kratos.md](docs/kratos.md)) | `local` |
 | `WIZIKI_KRATOS_URL` | Avec `WIZIKI_AUTH=kratos` : API publique de Kratos vue depuis le serveur (ex. `http://kratos:4433`) | — |
+| `WIZIKI_QUOTA_MO` | Espace maximal des images de chaque wiki, en Mo | illimité |
 | `WIZIKI_KRATOS_INSCRIPTION` | `1` pour proposer « Créer un compte » sur le wiki (fermé par défaut) | — |
 
 ## Comptes et rôles

@@ -47,7 +47,7 @@ const TYPES_STATIQUES = { '.js': 'text/javascript; charset=utf-8', '.css': 'text
  */
 export async function construireApp({ config, db, storage, multi = null }) {
     verifierBuild();
-    const service = creerServiceWiki({ db, storage });
+    const service = creerServiceWiki({ db, storage, quotaOctets: config.quotaOctets || 0 });
     const comptes = creerServiceComptes({ db });
     const archives = creerServiceArchive({ db, storage, wikis: service, logiciel: { nom: 'wiziki', version: VERSION } });
     const limiteurIp = creerLimiteur();
