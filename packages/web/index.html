@@ -14,8 +14,9 @@
     </div>
 
     <div class="flex flex-col md:flex-row flex-1">
-        <aside class="w-full md:w-auto md:min-w-[16rem] md:max-w-[26rem] md:shrink-0 bg-white border-b md:border-r border-gray-200 p-4 flex flex-col justify-between shadow-sm">
-            <div>
+        <!-- Sur grand écran, le menu reste à l'écran : l'arbre défile à l'intérieur, les boutons du bas restent visibles -->
+        <aside class="w-full md:w-auto md:min-w-[16rem] md:max-w-[26rem] md:shrink-0 md:sticky md:top-0 md:h-screen md:self-start bg-white border-b md:border-r border-gray-200 p-4 flex flex-col justify-between shadow-sm">
+            <div class="md:flex-1 md:min-h-0 md:overflow-y-auto">
                 <div class="flex justify-between items-center mb-4">
                     <h1 id="nom-du-wiki" class="text-xl font-bold text-indigo-600">📚 MiniWiki</h1>
                     <button data-action="ajouterPage" class="admin-only bg-indigo-600 text-white px-2 py-1 rounded text-sm hover:bg-indigo-700">+</button>
