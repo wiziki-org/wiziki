@@ -42,9 +42,9 @@ const maintenant = () => new Date().toISOString();
 
 export function verifierNouveauMotDePasse(motDePasse) {
     if (typeof motDePasse !== 'string' || motDePasse.length < LONGUEUR_MIN_MOT_DE_PASSE) {
-        throw new ErreurWiki(400, `Le mot de passe doit contenir au moins ${LONGUEUR_MIN_MOT_DE_PASSE} caractères.`);
+        throw new ErreurWiki(400, `Le mot de passe doit contenir au moins ${LONGUEUR_MIN_MOT_DE_PASSE} caractères.`, 'mot_de_passe_court', { min: LONGUEUR_MIN_MOT_DE_PASSE });
     }
-    if (motDePasse.length > 200) throw new ErreurWiki(400, 'Mot de passe trop long.');
+    if (motDePasse.length > 200) throw new ErreurWiki(400, 'Mot de passe trop long.', 'mot_de_passe_long');
 }
 
 export function creerServiceComptes({ db }) {
@@ -69,15 +69,15 @@ export function creerServiceComptes({ db }) {
         if (externe && !identifiant) identifiant = await identifiantLibre(email);
         identifiant = String(identifiant || '').trim().toLowerCase();
         if (!REGEX_IDENTIFIANT.test(identifiant)) {
-            throw new ErreurWiki(400, 'Identifiant invalide : 2 à 40 caractères, lettres minuscules, chiffres, « . », « _ » ou « - ».');
+            throw new ErreurWiki(400, 'Identifiant invalide : 2 à 40 caractères, lettres minuscules, chiffres, « . », « _ » ou « - ».', 'identifiant_invalide');
         }
         email = email ? String(email).trim().toLowerCase() : null;
-        if (email && !REGEX_EMAIL.test(email)) throw new ErreurWiki(400, 'Adresse email invalide.');
-        if (externe) { if (!email && !kratosId) throw new ErreurWiki(400, 'Adresse email requise.'); }
-        else if (forcer) { if (typeof motDePasse !== 'string' || !motDePasse) throw new ErreurWiki(400, 'Mot de passe requis.'); }
+        if (email && !REGEX_EMAIL.test(email)) throw new ErreurWiki(400, 'Adresse email invalide.', 'email_invalide');
+        if (externe) { if (!email && !kratosId) throw new ErreurWiki(400, 'Adresse email requise.', 'email_requis'); }
+        else if (forcer) { if (typeof motDePasse !== 'string' || !motDePasse) throw new ErreurWiki(400, 'Mot de passe requis.', 'mot_de_passe_requis'); }
         else verifierNouveauMotDePasse(motDePasse);
-        if (await trouverParIdentifiant(identifiant)) throw new ErreurWiki(409, 'Cet identifiant est déjà utilisé.');
-        if (email && await trouverParIdentifiant(email)) throw new ErreurWiki(409, 'Cette adresse email est déjà utilisée.');
+        if (await trouverParIdentifiant(identifiant)) throw new ErreurWiki(409, 'Cet identifiant est déjà utilisé.', 'identifiant_pris');
+        if (email && await trouverParIdentifiant(email)) throw new ErreurWiki(409, 'Cette adresse email est déjà utilisée.', 'email_pris');
         const res = await db.insertInto('users').values({
             identifiant, email, nom: (nom && String(nom).trim().slice(0, 100)) || identifiant,
             password_hash: externe ? SANS_MOT_DE_PASSE : await hacherMotDePasse(motDePasse),
@@ -258,10 +258,10 @@ export function creerServiceComptes({ db }) {
     }
 
     async function definirRole(wikiId, userId, nouveauRole) {
-        if (!ROLES.includes(nouveauRole)) throw new ErreurWiki(400, 'Rôle invalide.');
+        if (!ROLES.includes(nouveauRole)) throw new ErreurWiki(400, 'Rôle invalide.', 'role_invalide');
         const actuel = await role(wikiId, userId);
         if (actuel === 'owner' && nouveauRole !== 'owner' && await nombreOwners(wikiId) <= 1) {
-            throw new ErreurWiki(409, 'Le wiki doit garder au moins un propriétaire.');
+            throw new ErreurWiki(409, 'Le wiki doit garder au moins un propriétaire.', 'dernier_proprietaire');
         }
         if (actuel) {
             await db.updateTable('members').set({ role: nouveauRole }).where('wiki_id', '=', wikiId).where('user_id', '=', userId).execute();
@@ -272,7 +272,7 @@ export function creerServiceComptes({ db }) {
 
     async function retirerMembre(wikiId, userId) {
         if (await role(wikiId, userId) === 'owner' && await nombreOwners(wikiId) <= 1) {
-            throw new ErreurWiki(409, 'Le wiki doit garder au moins un propriétaire.');
+            throw new ErreurWiki(409, 'Le wiki doit garder au moins un propriétaire.', 'dernier_proprietaire');
         }
         await db.deleteFrom('members').where('wiki_id', '=', wikiId).where('user_id', '=', userId).execute();
     }

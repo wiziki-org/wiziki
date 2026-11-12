@@ -29,7 +29,7 @@ export function creerServiceWiki({ db, storage, quotaOctets = 0 }) {
         const apres = (await espaceUtilise(wikiId)) - libere + ajout;
         if (apres > quotaOctets) {
             throw new ErreurWiki(413, `Espace plein : les images de ce wiki dépasseraient ${Math.round(quotaOctets / MO)} Mo `
-                + `(${(apres / MO).toFixed(1)} Mo). Supprimez des images inutiles ou réduisez leur taille.`);
+                + `(${(apres / MO).toFixed(1)} Mo). Supprimez des images inutiles ou réduisez leur taille.`, 'espace_plein', { quota: Math.round(quotaOctets / MO), total: (apres / MO).toFixed(1) });
         }
     }
 
@@ -78,7 +78,7 @@ export function creerServiceWiki({ db, storage, quotaOctets = 0 }) {
      */
     async function lireStructure(wikiId, { avecOrphelins = false } = {}) {
         const wiki = await trouverWikiParId(wikiId);
-        if (!wiki) throw new ErreurWiki(404, 'Wiki introuvable.');
+        if (!wiki) throw new ErreurWiki(404, 'Wiki introuvable.', 'wiki_introuvable');
         const pages = await db.selectFrom('pages')
             .select(['id', 'slug', 'titre', 'parent_id', 'position', 'dans_arbre'])
             .where('wiki_id', '=', wikiId).where('deleted_at', 'is', null)
@@ -162,15 +162,15 @@ export function creerServiceWiki({ db, storage, quotaOctets = 0 }) {
 
     async function lirePage(wikiId, slug) {
         const page = await trouverPage(wikiId, slug);
-        if (!page) throw new ErreurWiki(404, 'Page introuvable.');
+        if (!page) throw new ErreurWiki(404, 'Page introuvable.', 'page_introuvable');
         return page;
     }
 
     /** Crée ou met à jour le contenu d'une page, en conservant une révision. */
     async function enregistrerPage(wikiId, slug, contenu, auteurId = null) {
         verifierSlug(slug);
-        if (typeof contenu !== 'string') throw new ErreurWiki(400, 'Contenu invalide.');
-        if (Buffer.byteLength(contenu, 'utf8') > TAILLE_MAX_PAGE) throw new ErreurWiki(413, 'Page trop volumineuse.');
+        if (typeof contenu !== 'string') throw new ErreurWiki(400, 'Contenu invalide.', 'contenu_invalide');
+        if (Buffer.byteLength(contenu, 'utf8') > TAILLE_MAX_PAGE) throw new ErreurWiki(413, 'Page trop volumineuse.', 'page_trop_volumineuse');
         const date = maintenant();
 
         await db.transaction().execute(async trx => {
@@ -219,10 +219,10 @@ export function creerServiceWiki({ db, storage, quotaOctets = 0 }) {
     async function renommerPage(wikiId, slug, nouveauSlug) {
         verifierSlug(slug);
         if (typeof nouveauSlug !== 'string' || !REGEX_NOUVEAU_SLUG.test(nouveauSlug)) {
-            throw new ErreurWiki(400, 'Identifiant de fichier invalide.');
+            throw new ErreurWiki(400, 'Identifiant de fichier invalide.', 'identifiant_fichier_invalide');
         }
         if (nouveauSlug === slug) return;
-        if (await trouverPage(wikiId, nouveauSlug)) throw new ErreurWiki(409, 'Un fichier porte déjà ce nom.');
+        if (await trouverPage(wikiId, nouveauSlug)) throw new ErreurWiki(409, 'Un fichier porte déjà ce nom.', 'fichier_existe');
         const page = await trouverPage(wikiId, slug);
         if (!page) return; // page présente seulement dans l'arbre côté front : rien à renommer en base
         const date = maintenant();
@@ -273,7 +273,7 @@ export function creerServiceWiki({ db, storage, quotaOctets = 0 }) {
                 eb => eb.fn.coalesce('users.nom', 'revisions.auteur_nom').as('auteur')])
             .where('revisions.wiki_id', '=', wikiId).where('revisions.id', '=', revisionId)
             .executeTakeFirst();
-        if (!rev) throw new ErreurWiki(404, 'Version introuvable.');
+        if (!rev) throw new ErreurWiki(404, 'Version introuvable.', 'version_introuvable');
         return rev;
     }
 
@@ -281,7 +281,7 @@ export function creerServiceWiki({ db, storage, quotaOctets = 0 }) {
     async function restaurerRevision(wikiId, slug, revisionId, auteurId = null) {
         const page = await lirePage(wikiId, slug);
         const rev = await lireRevision(wikiId, revisionId);
-        if (rev.page_id !== page.id) throw new ErreurWiki(400, "Cette version n'appartient pas à cette page.");
+        if (rev.page_id !== page.id) throw new ErreurWiki(400, "Cette version n'appartient pas à cette page.", 'version_autre_page');
         await enregistrerPage(wikiId, slug, rev.contenu, auteurId);
     }
 
@@ -298,9 +298,9 @@ export function creerServiceWiki({ db, storage, quotaOctets = 0 }) {
     async function restaurerPage(wikiId, pageId, auteurId = null) {
         const page = await db.selectFrom('pages').selectAll()
             .where('wiki_id', '=', wikiId).where('id', '=', pageId).where('deleted_at', 'is not', null).executeTakeFirst();
-        if (!page) throw new ErreurWiki(404, 'Page introuvable dans la corbeille.');
+        if (!page) throw new ErreurWiki(404, 'Page introuvable dans la corbeille.', 'corbeille_introuvable');
         if (await trouverPage(wikiId, page.slug)) {
-            throw new ErreurWiki(409, `Une page « ${page.slug} » existe déjà : renommez-la avant de restaurer celle-ci.`);
+            throw new ErreurWiki(409, `Une page « ${page.slug} » existe déjà : renommez-la avant de restaurer celle-ci.`, 'restauration_conflit', { page: page.slug });
         }
         await db.updateTable('pages').set({ deleted_at: null, dans_arbre: 0, parent_id: null, position: null, updated_at: maintenant(), updated_by: auteurId })
             .where('id', '=', pageId).execute();
@@ -310,9 +310,9 @@ export function creerServiceWiki({ db, storage, quotaOctets = 0 }) {
     // ---------------------------------------------------------------- Fichiers (images)
 
     async function ajouterImage(wikiId, octets, auteurId = null) {
-        if (octets.length > TAILLE_MAX_IMAGE) throw new ErreurWiki(413, 'Image trop volumineuse.');
+        if (octets.length > TAILLE_MAX_IMAGE) throw new ErreurWiki(413, 'Image trop volumineuse.', 'image_trop_volumineuse');
         const type = detecterTypeImage(octets);
-        if (!type) throw new ErreurWiki(415, 'Format non accepté : seules les images PNG, JPEG, GIF et WebP sont autorisées.');
+        if (!type) throw new ErreurWiki(415, 'Format non accepté : seules les images PNG, JPEG, GIF et WebP sont autorisées.', 'image_format');
         await verifierQuota(wikiId, octets.length);
         const cle = `uploads/img_${Date.now()}_${crypto.randomBytes(4).toString('hex')}.${type.ext}`;
         await storage.ecrire(wikiId, cle, octets);
@@ -324,9 +324,9 @@ export function creerServiceWiki({ db, storage, quotaOctets = 0 }) {
 
     /** Enregistre un fichier existant (import). Écrase le fichier et met à jour sa fiche s'il existe déjà. */
     async function importerFichier(wikiId, cle, octets) {
-        if (!REGEX_CLE_FICHIER.test(cle)) throw new ErreurWiki(400, `Nom de fichier invalide : ${cle}`);
+        if (!REGEX_CLE_FICHIER.test(cle)) throw new ErreurWiki(400, `Nom de fichier invalide : ${cle}`, 'nom_fichier_invalide', { fichier: cle });
         const mime = TYPES_MIME[path.extname(cle).toLowerCase()];
-        if (!mime) throw new ErreurWiki(415, `Type de fichier non géré : ${cle}`);
+        if (!mime) throw new ErreurWiki(415, `Type de fichier non géré : ${cle}`, 'type_fichier', { fichier: cle });
         const ancien = await db.selectFrom('media').select('taille').where('wiki_id', '=', wikiId).where('cle', '=', cle).executeTakeFirst();
         await verifierQuota(wikiId, octets.length, ancien?.taille || 0);
         await storage.ecrire(wikiId, cle, octets);

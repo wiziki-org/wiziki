@@ -134,8 +134,13 @@ export async function construireApp({ config, db, storage, multi = null }) {
         let message = err.message;
         if (err.code === 'FST_ERR_CTP_BODY_TOO_LARGE') { statut = 413; message = 'Contenu trop volumineux.'; }
         else if (err.code === 'FST_ERR_CTP_INVALID_JSON_BODY' || err.code === 'FST_ERR_CTP_EMPTY_JSON_BODY') { statut = 400; message = 'JSON invalide.'; }
-        if (statut >= 500) { req.log.error(err); message = 'Erreur interne du serveur.'; }
-        reply.code(statut).header('Cache-Control', 'no-store').send({ ok: false, message });
+        let code = err instanceof ErreurWiki ? err.code : null;
+        if (statut === 413 && !code) code = 'trop_volumineux';
+        if (message === 'JSON invalide.' && !code) code = 'json_invalide';
+        if (statut >= 500) { req.log.error(err); message = 'Erreur interne du serveur.'; code = 'erreur_interne'; }
+        // `code` (+ `params`) : traduit par l'interface ; `message` reste en français pour l'API
+        reply.code(statut).header('Cache-Control', 'no-store')
+            .send({ ok: false, message, ...(code ? { code } : {}), ...(err.params && statut < 500 ? { params: err.params } : {}) });
     });
 
     // ------------------------------------------------------------ Contrôles d'accès
@@ -167,16 +172,16 @@ export async function construireApp({ config, db, storage, multi = null }) {
         const origine = req.headers.origin;
         if (!origine) return;
         let hote;
-        try { hote = new URL(origine).host; } catch { throw new ErreurWiki(403, 'Origine invalide.'); }
-        if (hote !== req.host) throw new ErreurWiki(403, 'Origine non autorisée.');
+        try { hote = new URL(origine).host; } catch { throw new ErreurWiki(403, 'Origine invalide.', 'origine_invalide'); }
+        if (hote !== req.host) throw new ErreurWiki(403, 'Origine non autorisée.', 'origine_refusee');
     }
 
     /** Exige une session et un rôle minimal (reader < editor < owner) ; pour une écriture, vérifie aussi l'origine */
     async function exigerRole(req, minimum) {
         const ctx = await contexte(req);
-        if (!ctx.utilisateur && ctx.kratosIndisponible) throw new ErreurWiki(503, 'Le service de connexion est momentanément indisponible.');
-        if (!ctx.utilisateur) throw new ErreurWiki(401, 'Connexion requise.');
-        if (!roleSuffit(ctx.role, minimum)) throw new ErreurWiki(403, "Vous n'avez pas les droits nécessaires sur ce wiki.");
+        if (!ctx.utilisateur && ctx.kratosIndisponible) throw new ErreurWiki(503, 'Le service de connexion est momentanément indisponible.', 'connexion_indisponible');
+        if (!ctx.utilisateur) throw new ErreurWiki(401, 'Connexion requise.', 'connexion_requise');
+        if (!roleSuffit(ctx.role, minimum)) throw new ErreurWiki(403, "Vous n'avez pas les droits nécessaires sur ce wiki.", 'droits_insuffisants');
         if (req.method !== 'GET' && req.method !== 'HEAD') verifierOrigine(req);
         return ctx;
     }
@@ -196,7 +201,7 @@ export async function construireApp({ config, db, storage, multi = null }) {
 
     const corpsJson = req => {
         if (Buffer.isBuffer(req.body) || typeof req.body === 'string') {
-            try { return JSON.parse(req.body.toString()); } catch { throw new ErreurWiki(400, 'JSON invalide.'); }
+            try { return JSON.parse(req.body.toString()); } catch { throw new ErreurWiki(400, 'JSON invalide.', 'json_invalide'); }
         }
         return req.body || {};
     };
@@ -281,13 +286,13 @@ export async function construireApp({ config, db, storage, multi = null }) {
         verifierOrigine(req);
         const { identifiant, motDePasse } = corpsJson(req);
         const cleCompte = String(identifiant || '').trim().toLowerCase();
-        if (limiteurIp.bloque(req.ip) || limiteurCompte.bloque(cleCompte)) throw new ErreurWiki(429, 'Trop de tentatives. Réessayez dans 15 minutes.');
+        if (limiteurIp.bloque(req.ip) || limiteurCompte.bloque(cleCompte)) throw new ErreurWiki(429, 'Trop de tentatives. Réessayez dans 15 minutes.', 'trop_de_tentatives');
         const utilisateur = await comptes.authentifier(cleCompte, motDePasse);
         if (!utilisateur) {
             limiteurIp.echec(req.ip);
             limiteurCompte.echec(cleCompte);
             req.log.warn({ ip: req.ip, identifiant: cleCompte.slice(0, 60) }, 'échec de connexion');
-            throw new ErreurWiki(401, 'Identifiant ou mot de passe incorrect.');
+            throw new ErreurWiki(401, 'Identifiant ou mot de passe incorrect.', 'identifiants_incorrects');
         }
         limiteurIp.reinitialiser(req.ip);
         limiteurCompte.reinitialiser(cleCompte);
@@ -323,16 +328,16 @@ export async function construireApp({ config, db, storage, multi = null }) {
     // Création du compte propriétaire sur une installation neuve (jeton affiché dans les journaux du serveur)
     app.post('/api/installation', async (req, reply) => {
         verifierOrigine(req);
-        if (!jetonInstallation) throw new ErreurWiki(409, 'Ce wiki est déjà installé.');
-        if (limiteurIp.bloque(req.ip)) throw new ErreurWiki(429, 'Trop de tentatives. Réessayez dans 15 minutes.');
+        if (!jetonInstallation) throw new ErreurWiki(409, 'Ce wiki est déjà installé.', 'deja_installe');
+        if (limiteurIp.bloque(req.ip)) throw new ErreurWiki(429, 'Trop de tentatives. Réessayez dans 15 minutes.', 'trop_de_tentatives');
         const { jeton, identifiant, email, nom, motDePasse } = corpsJson(req);
         // Mode Kratos : la personne s'est d'abord connectée avec son compte Kratos, le jeton la rend propriétaire
         const ctx = kratos ? await contexte(req) : null;
-        if (kratos && !ctx.utilisateur) throw new ErreurWiki(401, "Connectez-vous d'abord avec votre compte, puis saisissez le jeton.");
+        if (kratos && !ctx.utilisateur) throw new ErreurWiki(401, "Connectez-vous d'abord avec votre compte, puis saisissez le jeton.", 'installation_connexion');
         const a = Buffer.from(String(jeton || '')), b = Buffer.from(jetonInstallation);
         if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
             limiteurIp.echec(req.ip);
-            throw new ErreurWiki(403, "Jeton d'installation incorrect (il est affiché dans les journaux du serveur).");
+            throw new ErreurWiki(403, "Jeton d'installation incorrect (il est affiché dans les journaux du serveur).", 'jeton_incorrect');
         }
         const utilisateur = kratos ? ctx.utilisateur : await comptes.creerUtilisateur({ identifiant, email, nom, motDePasse });
         await comptes.definirRole(req.wikiId, utilisateur.id, 'owner');
@@ -347,10 +352,10 @@ export async function construireApp({ config, db, storage, multi = null }) {
 
     app.post('/api/compte/mot-de-passe', async req => {
         const { utilisateur } = await contexte(req);
-        if (!utilisateur) throw new ErreurWiki(401, 'Connexion requise.');
+        if (!utilisateur) throw new ErreurWiki(401, 'Connexion requise.', 'connexion_requise');
         verifierOrigine(req);
         const { actuel, nouveau } = corpsJson(req);
-        if (!(await comptes.verifierMotDePasseUtilisateur(utilisateur.id, actuel))) throw new ErreurWiki(403, 'Mot de passe actuel incorrect.');
+        if (!(await comptes.verifierMotDePasseUtilisateur(utilisateur.id, actuel))) throw new ErreurWiki(403, 'Mot de passe actuel incorrect.', 'mot_de_passe_actuel');
         // Les sessions ouvertes sur d'autres appareils sont fermées ; celle-ci reste ouverte
         await comptes.changerMotDePasse(utilisateur.id, nouveau, { sessionConservee: req.cookies[COOKIE_SESSION] });
         return { ok: true };
@@ -405,12 +410,12 @@ export async function construireApp({ config, db, storage, multi = null }) {
     app.post('/api/membres', async req => {
         await exigerRole(req, 'owner');
         const { identifiant, email, nom, motDePasse, role } = corpsJson(req);
-        if (multi && motDePasse) throw new ErreurWiki(400, "Les membres se connectent avec leur compte : indiquez seulement leur adresse email.");
+        if (multi && motDePasse) throw new ErreurWiki(400, "Les membres se connectent avec leur compte : indiquez seulement leur adresse email.", 'membre_sans_mot_de_passe');
         let u = await comptes.trouverParIdentifiant(identifiant || email);
         if (!u && (kratos || multi) && !motDePasse) {
             // Mode Kratos : invitation par email ; le compte sera relié à la première connexion avec cette adresse (vérifiée)
             const adresse = String(email || identifiant || '').trim().toLowerCase();
-            if (!adresse.includes('@')) throw new ErreurWiki(400, "Indiquez l'adresse email du membre : il se connectera avec le compte correspondant.");
+            if (!adresse.includes('@')) throw new ErreurWiki(400, "Indiquez l'adresse email du membre : il se connectera avec le compte correspondant.", 'membre_email_requis');
             const ident = identifiant && !String(identifiant).includes('@') ? identifiant : null;
             u = await comptes.creerUtilisateur({ identifiant: ident, email: adresse, nom, externe: true });
         }
@@ -436,7 +441,7 @@ export async function construireApp({ config, db, storage, multi = null }) {
     app.put('/api/wiki/visibilite', async req => {
         await exigerRole(req, 'owner');
         const { visibilite } = corpsJson(req);
-        if (!['public', 'prive'].includes(visibilite)) throw new ErreurWiki(400, 'Visibilité invalide.');
+        if (!['public', 'prive'].includes(visibilite)) throw new ErreurWiki(400, 'Visibilité invalide.', 'visibilite_invalide');
         await db.updateTable('wikis').set({ visibilite, updated_at: new Date().toISOString() }).where('id', '=', req.wikiId).execute();
         return { ok: true };
     });
@@ -546,7 +551,7 @@ export async function construireApp({ config, db, storage, multi = null }) {
 
     app.post('/api/import', { bodyLimit: LIMITE_IMPORT }, async req => {
         const { utilisateur } = await exigerRole(req, 'owner');
-        if (!Buffer.isBuffer(req.body) || !req.body.length) throw new ErreurWiki(400, 'Envoyez le fichier .zip de l\'export.');
+        if (!Buffer.isBuffer(req.body) || !req.body.length) throw new ErreurWiki(400, 'Envoyez le fichier .zip de l\'export.', 'import_fichier_requis');
         const resultat = await archives.importerWiki(req.wikiId, lireZip(req.body), { remplacer: req.query.remplacer === '1', auteurId: utilisateur.id });
         req.log.warn({ utilisateur: utilisateur.identifiant, pages: resultat.pages, images: resultat.images }, 'wiki importé depuis une archive');
         return { ok: true, ...resultat };

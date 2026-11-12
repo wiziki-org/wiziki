@@ -1,10 +1,17 @@
 // Règles de validation partagées (serveur, CLI, import).
 
 export class ErreurWiki extends Error {
-    /** @param {number} statut code HTTP correspondant  @param {string} message */
-    constructor(statut, message) {
+    /**
+     * @param {number} statut code HTTP correspondant
+     * @param {string} message texte en français (API, ligne de commande, journaux)
+     * @param {string} [code] code stable, traduit par l'interface (catalogues « erreur.<code> »)
+     * @param {Record<string, string|number>} [params] valeurs variables du message, pour la traduction
+     */
+    constructor(statut, message, code = null, params = null) {
         super(message);
         this.statut = statut;
+        this.code = code;
+        this.params = params;
     }
 }
 
@@ -22,7 +29,7 @@ export const TAILLE_MAX_PAGE = 2 * 1024 * 1024;
 export const TAILLE_MAX_IMAGE = 10 * 1024 * 1024;
 
 export function verifierSlug(slug) {
-    if (typeof slug !== 'string' || !REGEX_SLUG.test(slug)) throw new ErreurWiki(400, 'Identifiant de page invalide.');
+    if (typeof slug !== 'string' || !REGEX_SLUG.test(slug)) throw new ErreurWiki(400, 'Identifiant de page invalide.', 'page_identifiant_invalide');
     return slug;
 }
 
@@ -41,14 +48,14 @@ export function nettoyerParametres(p) {
 
 /** Valide un arbre reçu du front : [{ id, titre, enfants: [...] }] */
 export function nettoyerArbre(elements, profondeur = 0, vus = new Set()) {
-    if (!Array.isArray(elements)) throw new ErreurWiki(400, 'Arbre invalide.');
-    if (profondeur > PROFONDEUR_MAX_ARBRE) throw new ErreurWiki(400, 'Arbre trop profond.');
+    if (!Array.isArray(elements)) throw new ErreurWiki(400, 'Arbre invalide.', 'arbre_invalide');
+    if (profondeur > PROFONDEUR_MAX_ARBRE) throw new ErreurWiki(400, 'Arbre trop profond.', 'arbre_trop_profond');
     return elements.map(el => {
-        if (!el || typeof el !== 'object') throw new ErreurWiki(400, "Élément d'arbre invalide.");
+        if (!el || typeof el !== 'object') throw new ErreurWiki(400, "Élément d'arbre invalide.", 'arbre_element_invalide');
         if (typeof el.id !== 'string' || !REGEX_SLUG.test(el.id)) {
-            throw new ErreurWiki(400, `Identifiant de page invalide : ${String(el.id).slice(0, 50)}`);
+            throw new ErreurWiki(400, `Identifiant de page invalide : ${String(el.id).slice(0, 50)}`, 'page_identifiant_invalide');
         }
-        if (vus.has(el.id)) throw new ErreurWiki(400, `Page présente deux fois dans l'arbre : ${el.id}`);
+        if (vus.has(el.id)) throw new ErreurWiki(400, `Page présente deux fois dans l'arbre : ${el.id}`, 'arbre_doublon', { page: el.id });
         vus.add(el.id);
         const titre = typeof el.titre === 'string' && el.titre.trim() ? el.titre.slice(0, 300) : el.id;
         return { id: el.id, titre, enfants: nettoyerArbre(el.enfants || [], profondeur + 1, vus) };

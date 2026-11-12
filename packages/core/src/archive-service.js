@@ -42,7 +42,7 @@ export function creerServiceArchive({ db, storage, wikis, logiciel = { nom: 'wiz
     /** @returns {Promise<Map<string, Uint8Array|string>>} */
     async function exporterWiki(wikiId, { historique = true } = {}) {
         const wiki = await wikis.trouverWikiParId(wikiId);
-        if (!wiki) throw new ErreurWiki(404, 'Wiki introuvable.');
+        if (!wiki) throw new ErreurWiki(404, 'Wiki introuvable.', 'wiki_introuvable');
         const structure = await wikis.lireStructure(wikiId);
         const pages = await db.selectFrom('pages')
             .select(['id', 'slug', 'titre', 'contenu', 'created_at', 'updated_at'])
@@ -98,12 +98,12 @@ export function creerServiceArchive({ db, storage, wikis, logiciel = { nom: 'wiz
         const avertir = m => { if (avertissements.length < 500) avertissements.push(m); };
         const texte = chemin => decodeur.decode(fichiers.get(chemin));
 
-        if (!fichiers.has('wiki.json')) throw new ErreurWiki(400, "Archive non reconnue : le fichier wiki.json est absent. S'agit-il bien d'un export Wiziki ?");
+        if (!fichiers.has('wiki.json')) throw new ErreurWiki(400, "Archive non reconnue : le fichier wiki.json est absent. S'agit-il bien d'un export Wiziki ?", 'archive_sans_manifeste');
         let manifeste;
-        try { manifeste = JSON.parse(texte('wiki.json')); } catch { throw new ErreurWiki(400, 'Archive invalide : wiki.json illisible.'); }
-        if (manifeste?.format !== FORMAT_EXPORT) throw new ErreurWiki(400, "Archive non reconnue : ce n'est pas un export Wiziki.");
+        try { manifeste = JSON.parse(texte('wiki.json')); } catch { throw new ErreurWiki(400, 'Archive invalide : wiki.json illisible.', 'archive_illisible'); }
+        if (manifeste?.format !== FORMAT_EXPORT) throw new ErreurWiki(400, "Archive non reconnue : ce n'est pas un export Wiziki.", 'archive_non_wiziki');
         if (!(manifeste.version <= VERSION_FORMAT)) {
-            throw new ErreurWiki(400, `Cet export a été fait par une version plus récente de Wiziki (format ${manifeste.version}). Mettez Wiziki à jour pour l'importer.`);
+            throw new ErreurWiki(400, `Cet export a été fait par une version plus récente de Wiziki (format ${manifeste.version}). Mettez Wiziki à jour pour l'importer.`, 'archive_trop_recente', { version: manifeste.version });
         }
         const date = maintenant();
 
@@ -179,11 +179,11 @@ export function creerServiceArchive({ db, storage, wikis, logiciel = { nom: 'wiz
      */
     async function importerWiki(wikiId, fichiers, { remplacer = false, auteurId = null } = {}) {
         const wiki = await wikis.trouverWikiParId(wikiId);
-        if (!wiki) throw new ErreurWiki(404, 'Wiki introuvable.');
+        if (!wiki) throw new ErreurWiki(404, 'Wiki introuvable.', 'wiki_introuvable');
         const donnees = preparerImport(fichiers);
         const existant = await contenuExistant(wikiId);
         if (existant > 0 && !remplacer) {
-            throw new ErreurWiki(409, `Ce wiki contient déjà ${existant} pages : l'import remplacerait tout son contenu.`);
+            throw new ErreurWiki(409, `Ce wiki contient déjà ${existant} pages : l'import remplacerait tout son contenu.`, 'import_wiki_non_vide', { pages: existant });
         }
         const anciennesCles = (await db.selectFrom('media').select('cle').where('wiki_id', '=', wikiId).execute()).map(m => m.cle);
 
@@ -192,7 +192,7 @@ export function creerServiceArchive({ db, storage, wikis, logiciel = { nom: 'wiz
             const total = donnees.images.reduce((n, img) => n + img.octets.length, 0);
             if (total > wikis.quotaOctets) {
                 throw new ErreurWiki(413, `Les images de cette archive font ${(total / 1024 / 1024).toFixed(1)} Mo : `
-                    + `la limite de ce wiki est de ${Math.round(wikis.quotaOctets / 1024 / 1024)} Mo.`);
+                    + `la limite de ce wiki est de ${Math.round(wikis.quotaOctets / 1024 / 1024)} Mo.`, 'import_quota', { total: (total / 1024 / 1024).toFixed(1), quota: Math.round(wikis.quotaOctets / 1024 / 1024) });
             }
         }
 
