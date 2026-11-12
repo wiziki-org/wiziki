@@ -1,5 +1,7 @@
 // Connexion par Ory Kratos (WIZIKI_AUTH=kratos) : connexion, inscription, mot de passe oublié et réglages du compte,
 // affichés à partir des « parcours » de Kratos. Tout passe par le relais /kratos du wiki (même origine).
+// En anglais, les messages de Kratos sont affichés tels quels (Kratos les rédige en anglais).
+import { t, langueActive } from './i18n.js';
 
 const FR = {
     1010001: 'Se connecter', 1010003: 'Confirmez votre identité pour continuer.',
@@ -38,22 +40,25 @@ const FR = {
 function tr(message) {
     if (!message) return '';
     const c = message.context || {};
+    if (langueActive() !== 'fr') return message.text;
     switch (message.id) {
         case 4000003: return `Trop court : au moins ${c.min_length ?? ''} caractères.`;
         case 4000005: return `Ce mot de passe ne peut pas être utilisé${c.reason ? ` : ${c.reason}` : '.'}`;
         case 4000032: return `Le mot de passe doit contenir au moins ${c.min_length ?? 8} caractères.`;
-        default: return FR[message.id] || message.text;
+        default: return (langueActive() === 'fr' && FR[message.id]) || message.text;
     }
 }
 
+// Titres traduits au moment de l'affichage (la langue est choisie après le chargement du module)
 const ECRANS = {
-    connexion: { flux: 'login', titre: '🔐 Connexion' },
-    inscription: { flux: 'registration', titre: '✨ Créer un compte' },
-    oubli: { flux: 'recovery', titre: '🔑 Mot de passe oublié' },
-    compte: { flux: 'settings', titre: '🔑 Mon compte' },
-    verification: { flux: 'verification', titre: '✉️ Vérifier mon adresse email' },
+    connexion: { flux: 'login', get titre() { return t('kratos.titre_connexion'); } },
+    inscription: { flux: 'registration', get titre() { return t('kratos.titre_inscription'); } },
+    oubli: { flux: 'recovery', get titre() { return t('kratos.titre_oubli'); } },
+    compte: { flux: 'settings', get titre() { return t('kratos.titre_compte'); } },
+    verification: { flux: 'verification', get titre() { return t('kratos.titre_verification'); } },
 };
-const TITRES_GROUPES = { profile: 'Adresse email', password: 'Mot de passe', totp: 'Application d’authentification', lookup_secret: 'Codes de secours' };
+const GROUPES = ['profile', 'password', 'totp', 'lookup_secret'];
+const titreGroupe = g => (GROUPES.includes(g) ? t(`kratos.groupe_${g}`) : null);
 
 // Petit constructeur d'éléments : h('button.classe', { type: 'button', onclick }, 'texte')
 function h(spec, props = {}, ...enfants) {
@@ -183,9 +188,9 @@ async function afficherEcran(nom, params, options) {
         } else if (statut === 401 && nom === 'compte') {
             aller('connexion');
         } else if (statut === 410 || statut === 404 || statut === 403 || id === 'security_csrf_violation') {
-            recommencer('La page a expiré. Recommencez.');
+            recommencer(t('kratos.page_expiree'));
         } else {
-            echec(carte, corps?.error?.message ? 'Le service de connexion a refusé la demande.' : 'Le service de connexion est momentanément indisponible.', () => recommencer());
+            echec(carte, corps?.error?.message ? t('kratos.demande_refusee') : t('kratos.indisponible'), () => recommencer());
         }
     };
 
@@ -203,15 +208,15 @@ async function afficherEcran(nom, params, options) {
                 });
             } catch {
                 for (const b of form.querySelectorAll('button')) b.disabled = false;
-                form.before(h('p.text-xs.text-red-600.mb-2', {}, 'Connexion au serveur impossible. Vérifiez votre réseau.'));
+                form.before(h('p.text-xs.text-red-600.mb-2', {}, t('kratos.reseau')));
                 return;
             }
             if (r.corps?.ui && nom === 'compte' && r.corps.state === 'success') {
                 // Réglage enregistré (ex. nouveau mot de passe après « mot de passe oublié ») : confirmation bien visible
                 carte.replaceChildren(
                     h('h3.text-lg.font-bold.text-gray-900.mb-3', {}, ecran.titre),
-                    h('p.text-sm.text-green-700.mb-4', {}, '✅ Modifications enregistrées.'),
-                    h('div.flex.justify-end', {}, h('button', { type: 'button', class: CLASSES_BOUTON, onclick: () => fermer('connecte') }, 'Continuer')));
+                    h('p.text-sm.text-green-700.mb-4', {}, t('kratos.enregistre')),
+                    h('div.flex.justify-end', {}, h('button', { type: 'button', class: CLASSES_BOUTON, onclick: () => fermer('connecte') }, t('kratos.continuer'))));
                 carte.querySelector('button')?.focus();
             }
             else if (r.corps?.ui) afficherFlux(r.corps); // erreurs de saisie, étape suivante
@@ -238,7 +243,7 @@ async function afficherEcran(nom, params, options) {
         if (r.statut === 200 && r.corps?.ui) afficherFlux(r.corps);
         else probleme(r);
     } catch {
-        echec(carte, 'Connexion au serveur impossible. Vérifiez votre réseau.', () => recommencer());
+        echec(carte, t('kratos.reseau'), () => recommencer());
     }
 }
 
@@ -246,8 +251,8 @@ function echec(carte, message, reessayer) {
     carte.replaceChildren(
         h('p.text-sm.text-red-600.mb-4', {}, message),
         h('div.flex.gap-2', {},
-            h('button', { type: 'button', class: CLASSES_BOUTON_SECONDAIRE, onclick: () => fermer('annule') }, 'Fermer'),
-            h('button', { type: 'button', class: CLASSES_BOUTON, onclick: reessayer }, 'Réessayer')),
+            h('button', { type: 'button', class: CLASSES_BOUTON_SECONDAIRE, onclick: () => fermer('annule') }, t('ui.fermer')),
+            h('button', { type: 'button', class: CLASSES_BOUTON, onclick: reessayer }, t('kratos.reessayer'))),
     );
 }
 
@@ -264,7 +269,7 @@ function rendreFlux(flux, nom, titre, envoyer, aller, options) {
     const parties = [];
     const deuxEtapes = flux.requested_aal === 'aal2';
     const rafraichir = flux.refresh === true;
-    parties.push(h('h3.text-lg.font-bold.text-gray-900.mb-1', {}, deuxEtapes ? '🔐 Seconde étape' : rafraichir ? '🔐 Confirmer votre identité' : titre));
+    parties.push(h('h3.text-lg.font-bold.text-gray-900.mb-1', {}, deuxEtapes ? t('kratos.seconde_etape') : rafraichir ? t('kratos.confirmer_identite') : titre));
     if (options.message && nom === 'connexion') parties.push(h('p.text-xs.text-gray-500.mb-3', {}, options.message));
     for (const m of flux.ui.messages || []) parties.push(elementMessage(m));
 
@@ -274,8 +279,8 @@ function rendreFlux(flux, nom, titre, envoyer, aller, options) {
         const groupes = [...new Set(flux.ui.nodes.map(n => n.group))].filter(g => g !== 'default');
         for (const g of groupes) {
             const form = construireFormulaire([...caches, ...flux.ui.nodes.filter(n => n.group === g)], envoyer);
-            parties.push(nom === 'compte' && TITRES_GROUPES[g]
-                ? h('section.mt-4.pt-3.border-t', {}, h('h4.text-sm.font-semibold.text-gray-700.mb-2', {}, TITRES_GROUPES[g]), form)
+            parties.push(nom === 'compte' && titreGroupe(g)
+                ? h('section.mt-4.pt-3.border-t', {}, h('h4.text-sm.font-semibold.text-gray-700.mb-2', {}, titreGroupe(g)), form)
                 : form);
         }
     } else parties.push(construireFormulaire(flux.ui.nodes, envoyer));
@@ -283,17 +288,17 @@ function rendreFlux(flux, nom, titre, envoyer, aller, options) {
     const liens = [];
     const lien = (texte, onclick) => h('button.text-xs.text-gray-500.hover:text-indigo-600', { type: 'button', onclick }, texte);
     if (nom === 'connexion' && !deuxEtapes && !rafraichir) {
-        liens.push(lien('Mot de passe oublié ?', () => aller('oubli')));
-        if (options.inscription) liens.push(lien('Créer un compte', () => aller('inscription')));
-        if (options.secours) liens.push(lien('Compte local (secours)', () => fermer('secours')));
+        liens.push(lien(t('kratos.lien_oubli'), () => aller('oubli')));
+        if (options.inscription) liens.push(lien(t('kratos.lien_inscription'), () => aller('inscription')));
+        if (options.secours) liens.push(lien(t('kratos.lien_secours'), () => fermer('secours')));
     } else if (nom === 'inscription' || nom === 'oubli') {
-        liens.push(lien('J’ai déjà un compte', () => aller('connexion')));
+        liens.push(lien(t('kratos.lien_deja_compte'), () => aller('connexion')));
     } else if (nom === 'compte') {
-        liens.push(lien('Vérifier mon adresse email', () => aller('verification')));
+        liens.push(lien(t('kratos.lien_verifier'), () => aller('verification')));
     }
     // Après une inscription, la personne est déjà connectée : fermer la vérification ne l'annule pas
     const termine = nom === 'compte' || nom === 'verification';
-    liens.push(lien(termine ? (flux.state === 'passed_challenge' ? 'Continuer' : 'Fermer') : 'Annuler', () => fermer(termine ? 'connecte' : 'annule')));
+    liens.push(lien(termine ? (flux.state === 'passed_challenge' ? t('kratos.continuer') : t('ui.fermer')) : t('ui.annuler'), () => fermer(termine ? 'connecte' : 'annule')));
     parties.push(h('nav.flex.flex-wrap.justify-between.gap-2.mt-4', {}, ...liens));
     return parties;
 }

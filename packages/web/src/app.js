@@ -10,6 +10,7 @@ import { configurerComptes, brancherComptes, installer, libelleRole, actionsComp
 import { connexionKratos, deconnexionKratos, verifierAdresseKratos } from './kratos.js';
 import { configurerHistorique, actionsHistorique } from './historique.js';
 import { configurerSauvegarde, brancherSauvegarde, actionsSauvegarde } from './sauvegarde.js';
+import { t, messageErreur, choisirLangue, traduirePage } from './i18n.js';
 
 let etatEditeurBlocs = null; // lien entre les blocs affichés dans l'éditeur visuel et leur Markdown d'origine
 
@@ -167,7 +168,7 @@ function selectionnerTexteInDOM(container, texte) {
             return demanderConnexionLocale(message);
         }
         function demanderConnexionLocale(message) {
-            document.getElementById('connexion-info').textContent = message || 'Connectez-vous pour modifier le wiki.';
+            document.getElementById('connexion-info').textContent = message || t('ui.connectez_vous_pour_modifier_le_wiki');
             document.getElementById('connexion-erreur').classList.add('hidden');
             document.getElementById('input-mot-de-passe').value = '';
             const champIdentifiant = document.getElementById('input-identifiant');
@@ -199,7 +200,7 @@ function selectionnerTexteInDOM(container, texte) {
                 fermerConnexion(true);
                 return;
             }
-            erreur.textContent = data.message || 'Connexion impossible.';
+            erreur.textContent = messageErreur(data, t('js.connexion_impossible'));
             erreur.classList.remove('hidden');
         });
         async function seDeconnecter() {
@@ -213,13 +214,13 @@ function selectionnerTexteInDOM(container, texte) {
         async function apiEcrire(url, options = {}) {
             let res = await fetch(url, options);
             if (res.status === 401) {
-                const connecte = await demanderConnexion('Votre session a expiré. Reconnectez-vous pour enregistrer.');
-                if (!connecte) throw new Error('Non connecté : modification non enregistrée.');
+                const connecte = await demanderConnexion(t('js.session_expiree'));
+                if (!connecte) throw new Error(t('js.non_connecte'));
                 res = await fetch(url, options);
             }
             if (!res.ok) {
                 const data = await res.clone().json().catch(() => ({}));
-                const message = data.message || `Erreur ${res.status}`;
+                const message = messageErreur(data, t('js.erreur_http', { statut: res.status }));
                 alert(`⚠️ ${message}`);
                 throw new Error(message);
             }
@@ -269,7 +270,7 @@ function nettoyerTitresArbre(elements) {
                     a.dataset.slug = slug;
                 } else {
                     a.classList.add('lien-casse');
-                    a.title = `Page introuvable : ${href}`;
+                    a.title = t('js.page_introuvable_lien', { lien: href });
                 }
             });
         }
@@ -278,12 +279,12 @@ function nettoyerTitresArbre(elements) {
             const res = await fetch('/api/structure');
             if (res.status === 401) {
                 // Wiki privé : lecture réservée aux membres
-                if (await demanderConnexion('Ce wiki est privé : connectez-vous pour le consulter.')) return chargerStructure();
-                document.getElementById('zone-vide').innerHTML = '<p class="text-lg">🔒 Ce wiki est privé.</p>';
+                if (await demanderConnexion(t('js.wiki_prive_connexion'))) return chargerStructure();
+                document.getElementById('zone-vide').innerHTML = `<p class="text-lg">${t('js.wiki_prive')}</p>`;
                 return;
             }
             if (res.status === 403) {
-                document.getElementById('zone-vide').innerHTML = "<p class=\"text-lg\">🔒 Votre compte n'a pas accès à ce wiki privé.</p>";
+                document.getElementById('zone-vide').innerHTML = `<p class="text-lg">${t('js.wiki_prive_sans_acces')}</p>`;
                 return;
             }
             const dataRecue = await res.json();
@@ -312,6 +313,8 @@ function nettoyerTitresArbre(elements) {
         }
 
         async function initialiser() {
+            choisirLangue();
+            traduirePage();
             configurerComptes({ apiEcrire, session: () => sessionCourante });
             configurerHistorique({
                 apiEcrire,
@@ -339,7 +342,7 @@ function nettoyerTitresArbre(elements) {
                 // Mode Kratos : on se connecte d'abord avec son compte, le jeton le rend ensuite propriétaire
                 if (sessionCourante.auth === 'kratos') {
                     while (!sessionCourante.connecte) {
-                        await connexionKratos({ message: "Installation : connectez-vous, puis saisissez le jeton d'installation.", inscription: !!sessionCourante.inscription });
+                        await connexionKratos({ message: t('js.installation_kratos'), inscription: !!sessionCourante.inscription });
                         await lireSession(true);
                     }
                 }
@@ -352,12 +355,12 @@ function nettoyerTitresArbre(elements) {
                 if (!sessionCourante.connecte) await demanderConnexion();
                 // Mode Kratos : une invitation n'est reliée au compte qu'une fois l'adresse email vérifiée
                 if (!peut('editor') && sessionCourante.auth === 'kratos' && sessionCourante.connecte && sessionCourante.utilisateur?.externe && !sessionCourante.role
-                    && confirm("Votre compte n'a pas encore de droits sur ce wiki.\n\nSi vous avez été invité avec votre adresse email, il faut d'abord la vérifier. Recevoir un code de vérification maintenant ?")) {
+                    && confirm(t('js.verifier_adresse_invite'))) {
                     await verifierAdresseKratos();
                     await lireSession(true);
                 }
                 if (peut('editor')) activerModeAdmin();
-                else if (sessionCourante.connecte) alert("Votre compte n'a pas les droits de modification sur ce wiki : vous êtes en lecture seule.");
+                else if (sessionCourante.connecte) alert(t('js.lecture_seule'));
             }
 
             await chargerStructure();
@@ -405,7 +408,7 @@ function nettoyerTitresArbre(elements) {
                         integrerFichierOrphelin(idFichier);
                     };
                     div.querySelector('.bouton-supprimer-orphelin').onclick = () => {
-                        if (!confirm(`Mettre la page « ${nomAffichage} » à la corbeille ? Elle pourra être restaurée depuis « 🗑️ Corbeille ».`)) return;
+                        if (!confirm(t('js.confirmer_corbeille', { page: nomAffichage }))) return;
                         div.remove();
                         if (listeOrphelins.children.length === 0) blocOrphelins.classList.add('hidden');
                         supprimerFichierOrphelin(idFichier);
@@ -507,7 +510,7 @@ function nettoyerTitresArbre(elements) {
             promessePageActuelle = (async () => {
                 const res = await fetch(`/api/page/${encodeURIComponent(id)}`);
                 if (res.status === 404 || res.status === 400) {
-                    document.getElementById('contenu-html').innerHTML = '<p class="text-gray-400 italic">Cette page n\'existe pas.</p>';
+                    document.getElementById('contenu-html').innerHTML = `<p class="text-gray-400 italic">${t('js.page_inexistante')}</p>`;
                     document.getElementById('editeur-texte').value = '';
                     return;
                 }
@@ -523,7 +526,7 @@ function nettoyerTitresArbre(elements) {
                 }
 
                 const zoneContenu = document.getElementById('contenu-html');
-                zoneContenu.innerHTML = texteAAfficher ? rendreMarkdown(corrigerLiensAvecEspaces(texteAAfficher)) : '<p class="text-gray-400 italic">Page vide.</p>';
+                zoneContenu.innerHTML = texteAAfficher ? rendreMarkdown(corrigerLiensAvecEspaces(texteAAfficher)) : `<p class="text-gray-400 italic">${t('js.page_vide')}</p>`;
                 preparerLiensInternes(zoneContenu);
                 document.getElementById('editeur-texte').value = texteBrut;
             })();
@@ -564,7 +567,7 @@ function nettoyerTitresArbre(elements) {
         }
         
         function ajouterPage() { 
-            const titre = prompt("Nom de la page ?"); if (!titre) return; 
+            const titre = prompt(t('js.nom_de_la_page')); if (!titre) return; 
             const idUnique = 'page_' + Date.now();
             configGlobal.arbre.push({ id: idUnique, titre, enfants: [] }); 
             rendreArbre(configGlobal.arbre, document.getElementById('menu-arbre')); 
@@ -572,7 +575,7 @@ function nettoyerTitresArbre(elements) {
         }
         
         function supprimerPage(id) { 
-            if(confirm("Supprimer la page de la liste ?")) { 
+            if(confirm(t('js.retirer_de_la_liste'))) { 
                 configGlobal.arbre = filtrerArbre(configGlobal.arbre, id); 
                 rendreArbre(configGlobal.arbre, document.getElementById('menu-arbre')); 
                 activerDragAndDrop(); 
@@ -595,7 +598,7 @@ function nettoyerTitresArbre(elements) {
         }
 
         async function renommerPage(id, ancienTitre) {
-            const nouveauTitre = prompt("Nouveau titre de la page ?", ancienTitre);
+            const nouveauTitre = prompt(t('js.nouveau_titre'), ancienTitre);
             if (!nouveauTitre || nouveauTitre === ancienTitre) return;
 
             const nouvelId = genererIdDepuisTitre(nouveauTitre);
@@ -696,13 +699,13 @@ function nettoyerTitresArbre(elements) {
             const btn = document.getElementById('btn-ajouter-lien');
             if (!btn) return;
             if (modeEditionActuel === 'visuel') {
-                btn.textContent = '🔗 Lien'; btn.classList.remove('bg-amber-600','hover:bg-amber-700'); btn.classList.add('bg-sky-600','hover:bg-sky-700'); return;
+                btn.textContent = t('ui.lien'); btn.classList.remove('bg-amber-600','hover:bg-amber-700'); btn.classList.add('bg-sky-600','hover:bg-sky-700'); return;
             }
             const info = detecterLienSousCurseur();
             if (info) {
-                btn.textContent = '🔗 Modifier Lien'; btn.classList.remove('bg-sky-600','hover:bg-sky-700'); btn.classList.add('bg-amber-600','hover:bg-amber-700');
+                btn.textContent = t('js.modifier_lien'); btn.classList.remove('bg-sky-600','hover:bg-sky-700'); btn.classList.add('bg-amber-600','hover:bg-amber-700');
             } else {
-                btn.textContent = '🔗 Lien'; btn.classList.remove('bg-amber-600','hover:bg-amber-700'); btn.classList.add('bg-sky-600','hover:bg-sky-700');
+                btn.textContent = t('ui.lien'); btn.classList.remove('bg-amber-600','hover:bg-amber-700'); btn.classList.add('bg-sky-600','hover:bg-sky-700');
             }
         }
 
@@ -711,8 +714,8 @@ function nettoyerTitresArbre(elements) {
             lienEnEditionInfo = detecterLienSousCurseur();
             lienEnEditionVisuel = null;
             const edition = !!lienEnEditionInfo;
-            document.getElementById('titre-modal-lien').textContent = edition ? "Modifier le lien" : "Insérer un lien";
-            document.getElementById('btn-valider-lien').textContent = edition ? 'Remplacer' : 'Insérer';
+            document.getElementById('titre-modal-lien').textContent = edition ? t('js.modifier_le_lien') : t('ui.inserer_un_lien');
+            document.getElementById('btn-valider-lien').textContent = edition ? t('js.remplacer') : t('ui.inserer');
             document.getElementById('input-texte-lien').value = edition ? lienEnEditionInfo.texte : '';
             document.getElementById('input-url-lien').value = edition ? lienEnEditionInfo.url : '';
             if (!edition) {
@@ -727,8 +730,8 @@ function nettoyerTitresArbre(elements) {
         function ouvrirBoiteLienVisuel(aElement) {
             lienEnEditionVisuel = aElement;
             lienEnEditionInfo = null;
-            document.getElementById('titre-modal-lien').textContent = "Modifier le lien";
-            document.getElementById('btn-valider-lien').textContent = 'Remplacer';
+            document.getElementById('titre-modal-lien').textContent = t('js.modifier_le_lien');
+            document.getElementById('btn-valider-lien').textContent = t('js.remplacer');
             document.getElementById('input-texte-lien').value = aElement.textContent;
             document.getElementById('input-url-lien').value = aElement.getAttribute('href') || '';
             document.getElementById('modal-lien').classList.remove('hidden');
@@ -783,18 +786,18 @@ function nettoyerTitresArbre(elements) {
             const btn = document.getElementById('btn-ajouter-image');
             if (!btn) return;
             if (modeEditionActuel === 'visuel') {
-                btn.textContent = '🖼️ Ajouter Image';
+                btn.textContent = t('ui.ajouter_image');
                 btn.classList.remove('bg-blue-600', 'hover:bg-blue-700');
                 btn.classList.add('bg-emerald-600', 'hover:bg-emerald-700');
                 return;
             }
             const info = detecterImageSousCurseur();
             if (info) {
-                btn.textContent = '🖼️ Modifier Image';
+                btn.textContent = t('js.modifier_image');
                 btn.classList.remove('bg-emerald-600', 'hover:bg-emerald-700');
                 btn.classList.add('bg-blue-600', 'hover:bg-blue-700');
             } else {
-                btn.textContent = '🖼️ Ajouter Image';
+                btn.textContent = t('ui.ajouter_image');
                 btn.classList.remove('bg-blue-600', 'hover:bg-blue-700');
                 btn.classList.add('bg-emerald-600', 'hover:bg-emerald-700');
             }
@@ -803,8 +806,8 @@ function nettoyerTitresArbre(elements) {
         function ouvrirBoiteImage() {
             if (modeEditionActuel === 'visuel') basculerModeEdition('markdown');
             imageEnEditionInfo = detecterImageSousCurseur();
-            document.querySelector('#modal-image h3').textContent = imageEnEditionInfo ? "Modifier l'image" : "Options de l'image";
-            document.getElementById('btn-valider-image').textContent = imageEnEditionInfo ? 'Remplacer' : 'Insérer';
+            document.querySelector('#modal-image h3').textContent = imageEnEditionInfo ? t('js.modifier_l_image') : t('ui.options_de_l_image');
+            document.getElementById('btn-valider-image').textContent = imageEnEditionInfo ? t('js.remplacer') : t('ui.inserer');
             document.getElementById('input-taille-image').value = imageEnEditionInfo ? (imageEnEditionInfo.width || '') : '';
             document.getElementById('input-url-image').value = '';
             document.getElementById('input-file-image').value = '';
@@ -829,7 +832,7 @@ function nettoyerTitresArbre(elements) {
         async function chargerGalerieServeur() {
             const c = document.getElementById('galerie-serveur'); c.innerHTML = '';
             const res = await fetch('/api/images');
-            if (!res.ok) { c.textContent = 'Galerie indisponible (session expirée ?).'; return; }
+            if (!res.ok) { c.textContent = t('js.galerie_indisponible'); return; }
             const list = await res.json();
             list.forEach(u => {
                 const w = document.createElement('div'); w.className = "border rounded p-1 cursor-pointer thumbnail-img";
@@ -920,8 +923,8 @@ function nettoyerTitresArbre(elements) {
             const src = imgElement.getAttribute('src') || '';
             const style = imgElement.getAttribute('style') || '';
             const widthMatch = style.match(/width:\s*(\d+)px/);
-            document.querySelector('#modal-image h3').textContent = "Modifier l'image";
-            document.getElementById('btn-valider-image').textContent = 'Remplacer';
+            document.querySelector('#modal-image h3').textContent = t('js.modifier_l_image');
+            document.getElementById('btn-valider-image').textContent = t('js.remplacer');
             document.getElementById('input-taille-image').value = widthMatch ? widthMatch[1] : '';
             document.getElementById('input-url-image').value = '';
             document.getElementById('input-file-image').value = '';
@@ -1139,8 +1142,9 @@ function convertirDokuWikiEnMarkdown() {
             document.getElementById('param-banniere-active').checked = configGlobal.parametres.banniereActive;
             document.getElementById('param-banniere-url').value = configGlobal.parametres.banniereUrl || "";
             document.getElementById('param-couleur-liens').value = configGlobal.parametres.couleurLiens || '#4f46e5';
+            document.getElementById('param-langue').value = configGlobal.parametres.langue || '';
             const sel = document.getElementById('param-page-accueil');
-            sel.innerHTML = '<option value="">-- Aucune --</option>';
+            sel.innerHTML = `<option value="">${t('js.aucune')}</option>`;
             flattenArbre(configGlobal.arbre).forEach(p => {
                 const opt = document.createElement('option');
                 opt.value = p.id; opt.textContent = p.titre;
@@ -1166,6 +1170,14 @@ function convertirDokuWikiEnMarkdown() {
             configGlobal.parametres.banniereUrl = document.getElementById('param-banniere-url').value;
             configGlobal.parametres.couleurLiens = document.getElementById('param-couleur-liens').value;
             configGlobal.parametres.pageAccueil = document.getElementById('param-page-accueil').value;
+            const langue = document.getElementById('param-langue').value;
+            if (langue !== (configGlobal.parametres.langue || '')) {
+                // Langue de l'interface : enregistrée tout de suite, puis la page est rechargée dans la nouvelle langue
+                configGlobal.parametres.langue = langue;
+                await sauvegarderConfigurationGlobal();
+                window.location.reload();
+                return;
+            }
             document.getElementById('nom-du-wiki').innerText = configGlobal.parametres.nom;
             applyBanniereVisuel();
             appliquerCouleurLiens(configGlobal.parametres.couleurLiens);

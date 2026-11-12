@@ -43,6 +43,8 @@ export function nettoyerParametres(p) {
     };
     if (typeof p.couleurLiens === 'string' && /^#[0-9a-f]{3,8}$/i.test(p.couleurLiens)) resultat.couleurLiens = p.couleurLiens;
     if (typeof p.pageAccueil === 'string' && (p.pageAccueil === '' || REGEX_SLUG.test(p.pageAccueil))) resultat.pageAccueil = p.pageAccueil;
+    // Langue de l'interface pour les visiteurs ('' = celle du navigateur)
+    if (['', 'fr', 'en'].includes(p.langue)) resultat.langue = p.langue;
     return resultat;
 }
 

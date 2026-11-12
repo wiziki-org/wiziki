@@ -1,5 +1,6 @@
 // Export / import du wiki complet (format ouvert .zip), réservé aux propriétaires.
 import { echapperHtml } from './markdown.js';
+import { t, messageErreur } from './i18n.js';
 
 let deps = null;
 /** @param {{ apiEcrire: Function }} d */
@@ -27,22 +28,22 @@ function brancherImport() {
         const zone = $('import-resultat');
         const bouton = $('btn-importer');
         bouton.disabled = true;
-        bouton.textContent = 'Import en cours…';
+        bouton.textContent = t('js.import_en_cours');
         zone.className = 'mt-3 text-sm text-gray-600';
-        zone.textContent = `Envoi de ${(fichier.size / 1024 / 1024).toFixed(1)} Mo…`;
+        zone.textContent = t('js.envoi_taille', { mo: (fichier.size / 1024 / 1024).toFixed(1) });
         try {
             const res = await deps.apiEcrire('/api/import?remplacer=1', { method: 'POST', headers: { 'Content-Type': 'application/zip' }, body: fichier });
             const r = await res.json();
             zone.className = 'mt-3 text-sm text-green-800';
-            zone.innerHTML = `✅ Import terminé : ${r.pages} pages, ${r.images} images, ${r.versions} versions.`
-                + (r.avertissements.length ? `<details class="mt-2 text-gray-600"><summary>${r.avertissements.length} élément(s) ignoré(s)</summary><ul class="list-disc pl-5 text-xs">${r.avertissements.map(a => `<li>${echapperHtml(a)}</li>`).join('')}</ul></details>` : '')
-                + '<button data-action="rechargerApresImport" class="block mt-3 bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-semibold">Afficher le wiki importé</button>';
+            zone.innerHTML = t('js.import_termine', { pages: r.pages, images: r.images, versions: r.versions })
+                + (r.avertissements.length ? `<details class="mt-2 text-gray-600"><summary>${t('js.elements_ignores', { n: r.avertissements.length })}</summary><ul class="list-disc pl-5 text-xs">${r.avertissements.map(a => `<li>${echapperHtml(a)}</li>`).join('')}</ul></details>` : '')
+                + '<button data-action="rechargerApresImport" class="block mt-3 bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-semibold">' + t('js.afficher_wiki_importe') + '</button>';
         } catch (err) {
             zone.className = 'mt-3 text-sm text-red-700';
-            zone.textContent = `Import non effectué : ${err.message}`;
+            zone.textContent = t('js.import_echec', { message: err.message });
         } finally {
             bouton.disabled = false;
-            bouton.textContent = 'Importer';
+            bouton.textContent = t('ui.importer');
         }
     });
 }

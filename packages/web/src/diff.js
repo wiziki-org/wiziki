@@ -1,4 +1,5 @@
 // Comparaison ligne à ligne (plus longue sous-séquence commune), pour l'historique des pages.
+import { t } from './i18n.js';
 
 const LIMITE_CELLULES = 6_000_000; // au-delà, comparaison simplifiée (pages énormes)
 
@@ -50,10 +51,10 @@ export function zonesModifiees(lignes, contexte = 2) {
     let masquees = 0;
     lignes.forEach((l, i) => {
         if (garder[i]) {
-            if (masquees) { resultat.push({ type: '…', texte: `${masquees} ligne${masquees > 1 ? 's' : ''} inchangée${masquees > 1 ? 's' : ''}` }); masquees = 0; }
+            if (masquees) { resultat.push({ type: '…', texte: t(masquees > 1 ? 'js.lignes_inchangees' : 'js.ligne_inchangee', { n: masquees }) }); masquees = 0; }
             resultat.push(l);
         } else masquees++;
     });
-    if (masquees && resultat.length) resultat.push({ type: '…', texte: `${masquees} ligne${masquees > 1 ? 's' : ''} inchangée${masquees > 1 ? 's' : ''}` });
+    if (masquees && resultat.length) resultat.push({ type: '…', texte: t(masquees > 1 ? 'js.lignes_inchangees' : 'js.ligne_inchangee', { n: masquees }) });
     return resultat;
 }

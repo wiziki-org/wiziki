@@ -212,16 +212,20 @@ export async function construireApp({ config, db, storage, multi = null }) {
     const echapper = t => String(t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
     // L'interface, avec le titre de la page dans l'onglet (utile aussi pour les moteurs de recherche et les partages)
-    async function envoyerInterface(reply, titre, statut = 200) {
+    async function envoyerInterface(reply, titre, statut = 200, wiki = null) {
         if (process.env.NODE_ENV !== 'production') indexHtml = fs.readFileSync(INDEX_FILE, 'utf8'); // rechargement en dev
-        const html = indexHtml.replace(/<title>[^<]*<\/title>/, `<title>${echapper(titre)}</title>`);
+        // Langue choisie dans les paramètres du wiki (sinon, l'interface prend celle du navigateur)
+        let langue = '';
+        try { langue = JSON.parse(wiki?.parametres || '{}').langue || ''; } catch { /* paramètres illisibles */ }
+        const html = indexHtml.replace(/<title>[^<]*<\/title>/, `<title>${echapper(titre)}</title>`)
+            .replace('data-langue-wiki=""', `data-langue-wiki="${['fr', 'en'].includes(langue) ? langue : ''}"`);
         return reply.code(statut).header('Content-Security-Policy', CSP).header('Cache-Control', 'no-cache')
             .type('text/html; charset=utf-8').send(html);
     }
 
     app.get('/', async (req, reply) => {
         const w = await service.trouverWikiParId(req.wikiId);
-        return envoyerInterface(reply, w.nom);
+        return envoyerInterface(reply, w.nom, 200, w);
     });
 
     app.get('/favicon.ico', async (req, reply) => reply.code(404).send());
@@ -240,7 +244,7 @@ export async function construireApp({ config, db, storage, multi = null }) {
                 return reply.redirect(`/${encodeURIComponent(nouveau)}${requete}`, 301);
             }
         }
-        return envoyerInterface(reply, page ? `${page.titre} — ${w.nom}` : `Page introuvable — ${w.nom}`, page ? 200 : 404);
+        return envoyerInterface(reply, page ? `${page.titre} — ${w.nom}` : `Page introuvable — ${w.nom}`, page ? 200 : 404, w);
     });
 
     // Fichiers de l'interface (noms avec empreinte : mis en cache un an)
