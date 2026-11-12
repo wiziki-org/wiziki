@@ -33,9 +33,18 @@ const CSP = [
 const TYPES_STATIQUES = { '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.woff2': 'font/woff2' };
 
 /**
- * @param {{ config: ReturnType<import('./config.js').lireConfig>, db: import('kysely').Kysely<any>, storage: any }} deps
+ * @typedef {object} OptionsMulti Plusieurs wikis servis par un même serveur (ex. une plateforme d'hébergement)
+ * @property {(req: any) => Promise<any|null>} resoudreWiki wiki de la requête (ligne de la table `wikis`), ou null (404)
+ * @property {(req: any, wiki: any) => string} urlConnexion page de connexion externe ; le wiki y ajoute `suite=<chemin>`
+ * @property {string} [urlCompte] page « Mon compte » externe
+ * @property {(code: string, req: any, wiki: any) => Promise<{ id: string, email: string|null, emailVerifie: boolean, nom?: string|null }|null>} echangerCode
+ *   au retour de la connexion externe (`/auth/retour?code=…`) : identité de la personne, ou null si le code est invalide
  */
-export async function construireApp({ config, db, storage }) {
+
+/**
+ * @param {{ config: ReturnType<import('./config.js').lireConfig>, db: import('kysely').Kysely<any>, storage: any, multi?: OptionsMulti }} deps
+ */
+export async function construireApp({ config, db, storage, multi = null }) {
     verifierBuild();
     const service = creerServiceWiki({ db, storage });
     const comptes = creerServiceComptes({ db });
@@ -52,19 +61,21 @@ export async function construireApp({ config, db, storage }) {
         return c ? c.slice(c.indexOf('=') + 1) : null;
     };
 
-    // Mode standalone : un seul wiki, créé au premier démarrage
-    let wiki = await service.trouverWikiParSlug(config.slugWiki);
-    if (!wiki) wiki = await service.creerWiki({ slug: config.slugWiki });
-    const wikiId = wiki.id;
+    // Mode standalone : un seul wiki, créé au premier démarrage. Avec `multi`, le wiki dépend de l'adresse (voir le hook onRequest).
+    let wikiUnique = null;
+    if (!multi) {
+        wikiUnique = await service.trouverWikiParSlug(config.slugWiki);
+        if (!wikiUnique) wikiUnique = await service.creerWiki({ slug: config.slugWiki });
+    }
 
     // Premier compte. Avec ADMIN_PASSWORD (installations existantes) : compte « admin » propriétaire, même mot de passe.
     // Sans : écran d'installation protégé par un jeton à usage unique affiché dans les journaux du serveur.
     let jetonInstallation = null;
     const messagesDemarrage = [];
-    if (await comptes.compterUtilisateurs() === 0) {
+    if (!multi && await comptes.compterUtilisateurs() === 0) {
         if (config.motDePasseAdmin) {
             const admin = await comptes.creerUtilisateur({ identifiant: 'admin', nom: 'Administrateur', motDePasse: config.motDePasseAdmin, forcer: true });
-            await comptes.definirRole(wikiId, admin.id, 'owner');
+            await comptes.definirRole(wikiUnique.id, admin.id, 'owner');
             messagesDemarrage.push("Compte « admin » créé à partir de ADMIN_PASSWORD (propriétaire du wiki). ADMIN_PASSWORD n'est plus utilisé ensuite.");
         } else {
             jetonInstallation = crypto.randomBytes(18).toString('base64url');
@@ -84,6 +95,15 @@ export async function construireApp({ config, db, storage }) {
         requestTimeout: 60_000,
     });
     await app.register(cookie);
+
+    // Wiki concerné par la requête
+    app.decorateRequest('wikiId', 0);
+    app.addHook('onRequest', async (req, reply) => {
+        if (!multi) { req.wikiId = wikiUnique.id; return; }
+        const w = await multi.resoudreWiki(req);
+        if (!w) return reply.code(404).type('text/plain; charset=utf-8').header('Cache-Control', 'no-store').send('Wiki introuvable.');
+        req.wikiId = w.id;
+    });
     app.addHook('onClose', async () => clearInterval(purge));
     app.addHook('onReady', async () => { for (const m of messagesDemarrage) app.log.warn(m); });
 
@@ -129,7 +149,7 @@ export async function construireApp({ config, db, storage }) {
                     else throw err;
                 }
             }
-            const role = utilisateur ? await comptes.role(wikiId, utilisateur.id) : null;
+            const role = utilisateur ? await comptes.role(req.wikiId, utilisateur.id) : null;
             req.contexteWiki = { utilisateur, role, kratosIndisponible, secondeEtape };
         }
         return req.contexteWiki;
@@ -156,7 +176,7 @@ export async function construireApp({ config, db, storage }) {
 
     /** Lecture : libre si le wiki est public, sinon réservée aux membres */
     async function exigerLecture(req) {
-        const w = await service.trouverWikiParId(wikiId);
+        const w = await service.trouverWikiParId(req.wikiId);
         if (w.visibilite === 'prive') await exigerRole(req, 'reader');
     }
 
@@ -188,7 +208,7 @@ export async function construireApp({ config, db, storage }) {
     }
 
     app.get('/', async (req, reply) => {
-        const w = await service.trouverWikiParId(wikiId);
+        const w = await service.trouverWikiParId(req.wikiId);
         return envoyerInterface(reply, w.nom);
     });
 
@@ -197,12 +217,12 @@ export async function construireApp({ config, db, storage }) {
 
     // Adresse d'une page : /<slug>
     app.get('/:slug', async (req, reply) => {
-        const w = await service.trouverWikiParId(wikiId);
+        const w = await service.trouverWikiParId(req.wikiId);
         let page = null;
-        try { page = await service.trouverPage(wikiId, req.params.slug); } catch { /* slug invalide */ }
+        try { page = await service.trouverPage(req.wikiId, req.params.slug); } catch { /* slug invalide */ }
         if (!page) {
             // Page renommée : redirection permanente vers son nouveau nom
-            const nouveau = await service.suivreRedirection(wikiId, req.params.slug);
+            const nouveau = await service.suivreRedirection(req.wikiId, req.params.slug);
             if (nouveau) {
                 const requete = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '';
                 return reply.redirect(`/${encodeURIComponent(nouveau)}${requete}`, 301);
@@ -225,7 +245,7 @@ export async function construireApp({ config, db, storage }) {
 
     async function servirFichier(req, reply, prefixe) {
         await exigerLecture(req);
-        const fichier = await service.trouverFichier(wikiId, `${prefixe}/${req.params['*']}`);
+        const fichier = await service.trouverFichier(req.wikiId, `${prefixe}/${req.params['*']}`);
         if (!fichier) return reply.code(404).send();
         reply.type(fichier.mime).header('Content-Length', fichier.taille).header('Cache-Control', 'public, max-age=86400');
         // Un SVG peut contenir du script : on l'isole s'il est ouvert directement
@@ -242,10 +262,11 @@ export async function construireApp({ config, db, storage }) {
         // Juste après une connexion ou une vérification d'adresse : relire l'identité auprès de Kratos, sans le cache
         if (kratos && req.query.rafraichir) kratos.oublier(sessionKratos(req));
         const { utilisateur, role, kratosIndisponible, secondeEtape } = await contexte(req);
-        const w = await service.trouverWikiParId(wikiId);
+        const w = await service.trouverWikiParId(req.wikiId);
         return {
             connecte: !!utilisateur, utilisateur, role, installationRequise: !!jetonInstallation, visibilite: w.visibilite,
-            auth: config.auth, ...(kratos ? { kratosIndisponible, secondeEtape, inscription: config.kratos.inscription } : {}),
+            auth: multi ? 'externe' : config.auth, ...(kratos ? { kratosIndisponible, secondeEtape, inscription: config.kratos.inscription } : {}),
+            ...(multi ? { connexionExterne: multi.urlConnexion(req, w), compteExterne: multi.urlCompte || null } : {}),
         };
     });
 
@@ -265,7 +286,7 @@ export async function construireApp({ config, db, storage }) {
         limiteurCompte.reinitialiser(cleCompte);
         const { jeton, dureeSecondes } = await comptes.ouvrirSession(utilisateur.id, { ip: req.ip, userAgent: req.headers['user-agent'] });
         cookieSession(req, reply, jeton, dureeSecondes);
-        return { ok: true, utilisateur, role: await comptes.role(wikiId, utilisateur.id) };
+        return { ok: true, utilisateur, role: await comptes.role(req.wikiId, utilisateur.id) };
     });
 
     app.post('/api/logout', async (req, reply) => {
@@ -275,6 +296,22 @@ export async function construireApp({ config, db, storage }) {
         cookieSession(req, reply, '', 0);
         return { ok: true };
     });
+
+    // Retour de la connexion externe (multi) : le code à usage unique donne l'identité, le wiki ouvre sa propre session
+    if (multi) {
+        app.get('/auth/retour', async (req, reply) => {
+            const w = await service.trouverWikiParId(req.wikiId);
+            const suite = typeof req.query.suite === 'string' && /^\/(?![/\\])/.test(req.query.suite) ? req.query.suite : '/';
+            const identite = req.query.code ? await multi.echangerCode(String(req.query.code), req, w) : null;
+            if (!identite) return reply.redirect(suite, 302);
+            const utilisateur = await comptes.utilisateurKratos(identite);
+            if (!utilisateur) return reply.redirect(suite, 302);
+            const { jeton, dureeSecondes } = await comptes.ouvrirSession(utilisateur.id, { ip: req.ip, userAgent: req.headers['user-agent'] });
+            cookieSession(req, reply, jeton, dureeSecondes);
+            await comptes.noterConnexion(utilisateur.id);
+            return reply.header('Cache-Control', 'no-store').redirect(suite, 302);
+        });
+    }
 
     // Création du compte propriétaire sur une installation neuve (jeton affiché dans les journaux du serveur)
     app.post('/api/installation', async (req, reply) => {
@@ -291,7 +328,7 @@ export async function construireApp({ config, db, storage }) {
             throw new ErreurWiki(403, "Jeton d'installation incorrect (il est affiché dans les journaux du serveur).");
         }
         const utilisateur = kratos ? ctx.utilisateur : await comptes.creerUtilisateur({ identifiant, email, nom, motDePasse });
-        await comptes.definirRole(wikiId, utilisateur.id, 'owner');
+        await comptes.definirRole(req.wikiId, utilisateur.id, 'owner');
         jetonInstallation = null;
         if (!kratos) {
             const session = await comptes.ouvrirSession(utilisateur.id, { ip: req.ip, userAgent: req.headers['user-agent'] });
@@ -354,15 +391,16 @@ export async function construireApp({ config, db, storage }) {
     app.get('/api/membres', async (req, reply) => {
         await exigerRole(req, 'owner');
         reply.header('Cache-Control', 'no-store');
-        return comptes.listerMembres(wikiId);
+        return comptes.listerMembres(req.wikiId);
     });
 
     // Ajoute un membre : compte existant (identifiant ou email) ou nouveau compte avec un mot de passe initial
     app.post('/api/membres', async req => {
         await exigerRole(req, 'owner');
         const { identifiant, email, nom, motDePasse, role } = corpsJson(req);
+        if (multi && motDePasse) throw new ErreurWiki(400, "Les membres se connectent avec leur compte : indiquez seulement leur adresse email.");
         let u = await comptes.trouverParIdentifiant(identifiant || email);
-        if (!u && kratos && !motDePasse) {
+        if (!u && (kratos || multi) && !motDePasse) {
             // Mode Kratos : invitation par email ; le compte sera relié à la première connexion avec cette adresse (vérifiée)
             const adresse = String(email || identifiant || '').trim().toLowerCase();
             if (!adresse.includes('@')) throw new ErreurWiki(400, "Indiquez l'adresse email du membre : il se connectera avec le compte correspondant.");
@@ -370,20 +408,20 @@ export async function construireApp({ config, db, storage }) {
             u = await comptes.creerUtilisateur({ identifiant: ident, email: adresse, nom, externe: true });
         }
         if (!u) u = await comptes.creerUtilisateur({ identifiant, email, nom, motDePasse });
-        await comptes.definirRole(wikiId, u.id, role || 'editor');
+        await comptes.definirRole(req.wikiId, u.id, role || 'editor');
         return { ok: true, id: u.id };
     });
 
     app.patch('/api/membres/:id', async req => {
         await exigerRole(req, 'owner');
         const { role } = corpsJson(req);
-        await comptes.definirRole(wikiId, Number(req.params.id), role);
+        await comptes.definirRole(req.wikiId, Number(req.params.id), role);
         return { ok: true };
     });
 
     app.delete('/api/membres/:id', async req => {
         await exigerRole(req, 'owner');
-        await comptes.retirerMembre(wikiId, Number(req.params.id));
+        await comptes.retirerMembre(req.wikiId, Number(req.params.id));
         return { ok: true };
     });
 
@@ -392,7 +430,7 @@ export async function construireApp({ config, db, storage }) {
         await exigerRole(req, 'owner');
         const { visibilite } = corpsJson(req);
         if (!['public', 'prive'].includes(visibilite)) throw new ErreurWiki(400, 'Visibilité invalide.');
-        await db.updateTable('wikis').set({ visibilite, updated_at: new Date().toISOString() }).where('id', '=', wikiId).execute();
+        await db.updateTable('wikis').set({ visibilite, updated_at: new Date().toISOString() }).where('id', '=', req.wikiId).execute();
         return { ok: true };
     });
 
@@ -402,13 +440,13 @@ export async function construireApp({ config, db, storage }) {
         await exigerLecture(req);
         reply.header('Cache-Control', 'no-store');
         const { role } = await contexte(req);
-        return service.lireStructure(wikiId, { avecOrphelins: roleSuffit(role, 'editor') });
+        return service.lireStructure(req.wikiId, { avecOrphelins: roleSuffit(role, 'editor') });
     });
 
     app.post('/api/structure', async req => {
         const { utilisateur } = await exigerRole(req, 'editor');
         const { parametres, arbre } = corpsJson(req);
-        await service.enregistrerStructure(wikiId, { parametres, arbre }, utilisateur.id);
+        await service.enregistrerStructure(req.wikiId, { parametres, arbre }, utilisateur.id);
         return { status: 'ok' };
     });
 
@@ -416,7 +454,7 @@ export async function construireApp({ config, db, storage }) {
 
     app.get('/api/page/:slug', async (req, reply) => {
         await exigerLecture(req);
-        const page = await service.trouverPage(wikiId, req.params.slug);
+        const page = await service.trouverPage(req.wikiId, req.params.slug);
         reply.type('text/plain; charset=utf-8').header('Cache-Control', 'no-cache');
         if (!page) return reply.code(404).send('');
         return page.contenu;
@@ -425,49 +463,49 @@ export async function construireApp({ config, db, storage }) {
     app.post('/api/page/:slug', { bodyLimit: TAILLE_MAX_PAGE }, async req => {
         const { utilisateur } = await exigerRole(req, 'editor');
         const contenu = Buffer.isBuffer(req.body) ? req.body.toString('utf8') : (typeof req.body === 'string' ? req.body : '');
-        await service.enregistrerPage(wikiId, req.params.slug, contenu, utilisateur.id);
+        await service.enregistrerPage(req.wikiId, req.params.slug, contenu, utilisateur.id);
         return { status: 'ok' };
     });
 
     app.delete('/api/page/:slug', async req => {
         const { utilisateur } = await exigerRole(req, 'editor');
-        await service.supprimerPage(wikiId, req.params.slug, utilisateur.id);
+        await service.supprimerPage(req.wikiId, req.params.slug, utilisateur.id);
         return { status: 'ok' };
     });
 
     app.get('/api/page/:slug/revisions', async req => {
         await exigerRole(req, 'editor');
-        return service.listerRevisions(wikiId, req.params.slug);
+        return service.listerRevisions(req.wikiId, req.params.slug);
     });
 
     app.get('/api/revisions/:id', async (req, reply) => {
         await exigerRole(req, 'editor');
         reply.header('Cache-Control', 'no-store');
-        return service.lireRevision(wikiId, Number(req.params.id));
+        return service.lireRevision(req.wikiId, Number(req.params.id));
     });
 
     app.post('/api/page/:slug/restaurer', async req => {
         const { utilisateur } = await exigerRole(req, 'editor');
         const { revisionId } = corpsJson(req);
-        await service.restaurerRevision(wikiId, req.params.slug, Number(revisionId), utilisateur.id);
+        await service.restaurerRevision(req.wikiId, req.params.slug, Number(revisionId), utilisateur.id);
         return { ok: true };
     });
 
     app.get('/api/corbeille', async (req, reply) => {
         await exigerRole(req, 'editor');
         reply.header('Cache-Control', 'no-store');
-        return service.listerCorbeille(wikiId);
+        return service.listerCorbeille(req.wikiId);
     });
 
     app.post('/api/corbeille/:id/restaurer', async req => {
         const { utilisateur } = await exigerRole(req, 'editor');
-        return { ok: true, ...(await service.restaurerPage(wikiId, Number(req.params.id), utilisateur.id)) };
+        return { ok: true, ...(await service.restaurerPage(req.wikiId, Number(req.params.id), utilisateur.id)) };
     });
 
     app.post('/api/renommer/:slug', async req => {
         await exigerRole(req, 'editor');
         const { nouvelId } = corpsJson(req);
-        await service.renommerPage(wikiId, req.params.slug, nouvelId);
+        await service.renommerPage(req.wikiId, req.params.slug, nouvelId);
         return { ok: true };
     });
 
@@ -476,12 +514,12 @@ export async function construireApp({ config, db, storage }) {
     app.post('/api/upload', { bodyLimit: TAILLE_MAX_IMAGE }, async req => {
         const { utilisateur } = await exigerRole(req, 'editor');
         const octets = Buffer.isBuffer(req.body) ? req.body : Buffer.from(req.body || '');
-        return service.ajouterImage(wikiId, octets, utilisateur.id);
+        return service.ajouterImage(req.wikiId, octets, utilisateur.id);
     });
 
     app.get('/api/images', async req => {
         await exigerRole(req, 'editor');
-        return service.listerImagesEnvoyees(wikiId);
+        return service.listerImagesEnvoyees(req.wikiId);
     });
 
     // ------------------------------------------------------------ Export / import (format ouvert, docs/format-export.md)
@@ -489,9 +527,10 @@ export async function construireApp({ config, db, storage }) {
     app.get('/api/export', async (req, reply) => {
         await exigerRole(req, 'owner');
         const historique = req.query.historique !== '0';
-        const zip = creerZip(await archives.exporterWiki(wikiId, { historique }));
+        const zip = creerZip(await archives.exporterWiki(req.wikiId, { historique }));
         const jour = new Date().toISOString().slice(0, 10);
-        const nom = `${config.slugWiki.replace(/[^A-Za-z0-9_-]/g, '_')}-${jour}.wiziki.zip`;
+        const { slug } = await service.trouverWikiParId(req.wikiId);
+        const nom = `${slug.replace(/[^A-Za-z0-9_-]/g, '_')}-${jour}.wiziki.zip`;
         reply.header('Content-Type', 'application/zip')
             .header('Content-Disposition', `attachment; filename="${nom}"`)
             .header('Cache-Control', 'no-store');
@@ -501,7 +540,7 @@ export async function construireApp({ config, db, storage }) {
     app.post('/api/import', { bodyLimit: LIMITE_IMPORT }, async req => {
         const { utilisateur } = await exigerRole(req, 'owner');
         if (!Buffer.isBuffer(req.body) || !req.body.length) throw new ErreurWiki(400, 'Envoyez le fichier .zip de l\'export.');
-        const resultat = await archives.importerWiki(wikiId, lireZip(req.body), { remplacer: req.query.remplacer === '1', auteurId: utilisateur.id });
+        const resultat = await archives.importerWiki(req.wikiId, lireZip(req.body), { remplacer: req.query.remplacer === '1', auteurId: utilisateur.id });
         req.log.warn({ utilisateur: utilisateur.identifiant, pages: resultat.pages, images: resultat.images }, 'wiki importé depuis une archive');
         return { ok: true, ...resultat };
     });

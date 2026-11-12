@@ -91,7 +91,9 @@ export function ouvrirMembres() {
     afficherErreur('membre-erreur', '');
     $('form-membre').reset();
     // Mode Kratos : on invite par email ; un mot de passe ne sert que pour un compte local de secours
-    const kratos = deps.session().auth === 'kratos';
+    const externe = deps.session().auth === 'externe'; // plateforme : invitation par email uniquement
+    const kratos = externe || deps.session().auth === 'kratos';
+    $('membre-mdp').classList.toggle('hidden', externe);
     $('membre-identifiant').placeholder = kratos ? 'Email du membre (ou identifiant existant)' : 'Identifiant (ou compte existant)';
     $('membre-email').classList.toggle('hidden', kratos);
     $('membre-mdp').placeholder = kratos ? 'Mot de passe : seulement pour un compte local de secours' : 'Mot de passe initial (nouveau compte, 10 caractères minimum)';
@@ -119,6 +121,7 @@ function brancherFormulaireMembre() {
 
 export function ouvrirMonCompte() {
     const { utilisateur, role } = deps.session();
+    if (deps.session().compteExterne) { window.location.href = deps.session().compteExterne; return; } // compte géré par la plateforme
     if (utilisateur?.externe) { ouvrirCompteKratos(); return; } // email, mot de passe, double authentification : gérés par Kratos
     $('form-compte').reset();
     $('compte-identifiant').value = utilisateur?.identifiant || '';

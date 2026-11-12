@@ -138,13 +138,22 @@ function selectionnerTexteInDOM(container, texte) {
             document.getElementById('status-mode').className = "text-xs text-center text-amber-700 font-medium bg-amber-50 py-1 rounded";
         }
 
+        // Connexion externe (wiki hébergé sur une plateforme) : la personne se connecte sur le site de la plateforme, puis revient ici
+        function connexionExterne() {
+            const url = sessionCourante.connexionExterne;
+            const suite = window.location.pathname + '?mode=admin';
+            window.location.href = url + (url.includes('?') ? '&' : '?') + 'suite=' + encodeURIComponent(suite);
+        }
+
         function allerConnexion() {
+            if (sessionCourante.connexionExterne) { connexionExterne(); return; }
             window.location.href = window.location.pathname + '?mode=admin';
         }
 
         let resoudreConnexion = null;
         // Mode Kratos : connexion par le serveur d'identification ; le formulaire local reste accessible en secours
         async function demanderConnexion(message) {
+            if (sessionCourante.connexionExterne) { connexionExterne(); return new Promise(() => {}); }
             if (sessionCourante.auth === 'kratos') {
                 const r = await connexionKratos({ message, secours: true, secondeEtape: !!sessionCourante.secondeEtape, inscription: !!sessionCourante.inscription });
                 if (r === 'connecte') {
